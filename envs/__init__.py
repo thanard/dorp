@@ -4,7 +4,7 @@ import abc
 class GoalEnv(object):
     """Goal-based Environment"""
     def __init__(self):
-        self.current = None
+        self.state = None
         self.goal = None
 
     @abc.abstractmethod
@@ -29,4 +29,14 @@ class GoalEnv(object):
         :param action:
         :return:
         """
+        pass
+
+    @abc.abstractmethod
+    def sample_action(self):
+        """Return a uniformly sampled action from the action space"""
+        pass
+
+    @abc.abstractmethod
+    def reached_goal(self):
+        """Return True if the state of the environment matches the goal state"""
         pass
