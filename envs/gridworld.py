@@ -22,13 +22,11 @@ AGENT_SIZES = [[1,2], [2,1], [1,2], [2,1], [1,2], [2,1], [1,2], [2,1], [1,2], [2
 
 class GridWorld(GoalEnv):
 
-    def __init__(self, n_agents=1, grid_n=16, circular=False, allow_overlap=False, step_size=1):
+    def __init__(self, n_agents=1, grid_n=16, step_size=1):
         super(GridWorld, self).__init__()
         self.name = 'gridworld'
         self.grid_n = grid_n
         self.n_agents = n_agents
-        self.circular = circular
-        self.allow_overlap = allow_overlap
         self.step_size=1
 
         self.actions = np.eye(2*n_agents)
@@ -40,8 +38,6 @@ class GridWorld(GoalEnv):
         return self.state
 
     def get_reset_position(self):
-        if self.allow_overlap:
-            return np.random.randint(self.grid_n, size=(2 * self.n_agents)), None
         seen = set()
         cur_sample = []
         for i in range(self.n_agents):
@@ -49,10 +45,15 @@ class GridWorld(GoalEnv):
             while self.is_overlapping(i, sample_pos, seen):
                 sample_pos = self.sample_single_agent_pos(i)
             agent_dim = AGENT_SIZES[i]
-            for x in range(agent_dim[0]):
-                for y in range(agent_dim[1]):
-                    disp = np.array([x, y])
-                    seen.add(tuple(disp + sample_pos))
+            disps = np.mgrid[0:agent_dim[0], 0:agent_dim[1]].T.reshape(-1, 2)
+            pos_to_add = disps + np.tile(sample_pos, (agent_dim[0] * agent_dim[1], 1))
+            pos_to_add = set(list(map(tuple, pos_to_add)))
+            seen = seen | pos_to_add
+            # agent_dim = AGENT_SIZES[i]
+            # for x in range(agent_dim[0]):
+            #     for y in range(agent_dim[1]):
+            #         disp = np.array([x, y])
+            #         seen.add(tuple(disp + sample_pos))
             cur_sample.append(sample_pos)
         pos = np.concatenate(cur_sample).astype('uint8')
         return pos
@@ -68,9 +69,11 @@ class GridWorld(GoalEnv):
         for i in range(self.n_agents):
             agent_dim = AGENT_SIZES[i]
             x_cur, y_cur = self.state[2 * i], self.state[2 * i + 1]
-            for x in range(agent_dim[0]):
-                for y in range(agent_dim[1]):
-                    im[(x_cur + x) % self.grid_n, (y_cur + y) % self.grid_n] += colors[i]
+            im[x_cur:x_cur+agent_dim[0], y_cur:y_cur+agent_dim[1]] += \
+                np.tile(np.tile(colors[i], (agent_dim[1], 1)), (agent_dim[0], 1, 1))
+            # for x in range(agent_dim[0]):
+            #     for y in range(agent_dim[1]):
+            #         im[(x_cur + x) % self.grid_n, (y_cur + y) % self.grid_n] += colors[i]
         return im
 
     def step(self, action):
@@ -80,37 +83,44 @@ class GridWorld(GoalEnv):
         for i in range(self.n_agents):
             agent_pos = self.state[2 * i:2 * i + 2]
             agent_dim = AGENT_SIZES[i]
-            for x in range(agent_dim[0]):
-                for y in range(agent_dim[1]):
-                    disp = np.array([x, y])
-                    seen.add(tuple(disp + agent_pos))
-        if not self.circular:
-            # clamp next position
-            next_pos = (self.state + action)
-            next_pos = np.amax((np.zeros_like(max_positions),
-                                np.amin((next_pos, max_positions), axis=0)), axis=0)
-        else:
-            next_pos = (self.state + action) % self.grid_n
-
-        if self.allow_overlap:
-            return next_pos, None
+            disps = np.mgrid[0:agent_dim[0], 0:agent_dim[1]].T.reshape(-1, 2)
+            pos_to_add = disps + np.tile(agent_pos, (agent_dim[0] * agent_dim[1], 1))
+            pos_to_add = set(list(map(tuple, pos_to_add)))
+            seen = seen | pos_to_add
+            # for x in range(agent_dim[0]):
+            #     for y in range(agent_dim[1]):
+            #         disp = np.array([x, y])
+            #         seen.add(tuple(disp + agent_pos))
+        # clamp next position
+        next_pos = (self.state + action)
+        next_pos = np.amax((np.zeros_like(max_positions),
+                            np.amin((next_pos, max_positions), axis=0)), axis=0)
 
         agent_moved = np.where(action != 0)[0][0] // 2
         agent_dim = AGENT_SIZES[agent_moved]
         agent_pos = self.state[2 * agent_moved: 2 * agent_moved + 2]
         # remove the current agent's occupied positions from seen
-        for x in range(agent_dim[0]):
-            for y in range(agent_dim[1]):
-                disp = np.array([x, y])
-                seen.remove(tuple(disp + agent_pos))
+
+        disps = np.mgrid[0:agent_dim[0], 0:agent_dim[1]].T.reshape(-1,2)
+        pos_to_remove = disps + np.tile(agent_pos, (agent_dim[0]*agent_dim[1], 1))
+        pos_to_remove = set(list(map(tuple, pos_to_remove)))
+        seen = seen - pos_to_remove
+        # for x in range(agent_dim[0]):
+        #     for y in range(agent_dim[1]):
+        #         disp = np.array([x, y])
+        #         seen.remove(tuple(disp + agent_pos))
         # check if action results in overlap with any other agent
         if not self.is_overlapping(agent_moved, next_pos[2 * agent_moved:2 * agent_moved + 2], seen):
             cur_pos = next_pos.astype('uint8')
-        agent_new_pos = cur_pos[2 * agent_moved: 2 * agent_moved + 2]
-        for x in range(agent_dim[0]):
-            for y in range(agent_dim[1]):
-                disp = np.array([x, y])
-                seen.add(tuple(disp + agent_new_pos))
+
+        # agent_new_pos = cur_pos[2 * agent_moved: 2 * agent_moved + 2]
+        # pos_to_add = disps + np.tile(agent_new_pos, (agent_dim[0] * agent_dim[1], 1))
+        # pos_to_add = set(list(map(tuple, pos_to_add)))
+        # seen = seen | pos_to_add
+        # for x in range(agent_dim[0]):
+        #     for y in range(agent_dim[1]):
+        #         disp = np.array([x, y])
+        #         seen.add(tuple(disp + agent_new_pos))
         self.state = cur_pos
         return cur_pos
 
@@ -140,13 +150,10 @@ class GridWorld(GoalEnv):
 
     def sample_single_agent_pos(self, agent_idx):
         max_positions = self.get_max_agent_positions()
-        if self.circular:
-            sample_pos = np.random.randint(self.grid_n, size=2)
-        else:
-            max_position_agent = max_positions[2 * agent_idx:2 * agent_idx + 2]
-            sample_pos_x = np.random.randint(max_position_agent[0])
-            sample_pos_y = np.random.randint(max_position_agent[1])
-            sample_pos = np.array((sample_pos_x, sample_pos_y))
+        max_position_agent = max_positions[2 * agent_idx:2 * agent_idx + 2]
+        sample_pos_x = np.random.randint(max_position_agent[0])
+        sample_pos_y = np.random.randint(max_position_agent[1])
+        sample_pos = np.array((sample_pos_x, sample_pos_y))
         return sample_pos
 
     def is_overlapping(self, agent_idx, sample_pos, seen):
@@ -157,11 +164,16 @@ class GridWorld(GoalEnv):
         Returns True if the agent at agent_idx overlaps with any other agent whose position is present in 'seen' (set)
         '''
         agent_dim = AGENT_SIZES[agent_idx]
-        for x in range(agent_dim[0]):
-            for y in range(agent_dim[1]):
-                disp = np.array([x, y])
-                if (tuple(disp + sample_pos)) in seen:
-                    return True
+        disps = np.mgrid[0:agent_dim[0], 0:agent_dim[1]].T.reshape(-1, 2)
+        pos_to_check = disps + np.tile(sample_pos, (agent_dim[0] * agent_dim[1], 1))
+        pos_to_check = set(list(map(tuple, pos_to_check)))
+        if seen.intersection(pos_to_check):
+            return True
+        # for x in range(agent_dim[0]):
+        #     for y in range(agent_dim[1]):
+        #         disp = np.array([x, y])
+        #         if (tuple(disp + sample_pos)) in seen:
+        #             return True
         return False
 
     def image_to_position_thanard(self, im, agent_idx):
@@ -223,21 +235,6 @@ class GridWorld(GoalEnv):
             positions = np.where(im[:, :, agent_idx] != 0)
             up_left_pos = np.array((positions[0][0], positions[1][0]))
             return up_left_pos
-
-    def process_batch_from_vp_grid(model, sample_ims, single=False):
-        # images from vp model are tensors and rgb,
-        # so they do not need to be preprocessed as in process_batch
-        if single:
-            return model.encode(sample_ims.unsqueeze(0), vis=True, rgb_input=True).squeeze(0).cpu().numpy()
-        max_batch_size = 128
-        idx = 0
-        z_labels = []
-        while idx < len(sample_ims):
-            zs = model.encode(sample_ims[idx:idx + max_batch_size], vis=True, rgb_input=True).cpu().numpy()
-            z_labels.append(zs)
-            idx += max_batch_size
-        return np.concatenate(z_labels)
-
 
     def find_top_left(self, array2d):
         assert array2d.shape[0] == array2d.shape[1]
