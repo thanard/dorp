@@ -32,9 +32,13 @@ class GridWorld(GoalEnv):
         self.actions = np.eye(2*n_agents)
         self.actions = np.concatenate((self.actions, -1*self.actions)).astype('uint8')
 
-    def reset(self):
+    def reset(self, state=None):
+        if type(state) is np.ndarray:
+            self.state = state
+            return state
         self.state = self.get_reset_position()
-        self.goal = self.get_reset_position()
+        self.goal_state = self.get_reset_position()
+        self.render_goal()
         return self.state
 
     def get_reset_position(self):
@@ -75,6 +79,13 @@ class GridWorld(GoalEnv):
             #     for y in range(agent_dim[1]):
             #         im[(x_cur + x) % self.grid_n, (y_cur + y) % self.grid_n] += colors[i]
         return im
+
+    def render_goal(self):
+        cur_state = self.state
+        self.reset(self.goal_state)
+        self.goal_im = self.render()
+        self.state = cur_state
+        return self.goal_im
 
     def step(self, action):
         max_positions = self.get_max_agent_positions()
@@ -134,7 +145,7 @@ class GridWorld(GoalEnv):
         return self.actions[action_idx]
 
     def reached_goal(self):
-        return np.array_equal(self.goal, self.state)
+        return np.array_equal(self.goal_state, self.state)
 
     def get_max_agent_positions(self):
         '''
