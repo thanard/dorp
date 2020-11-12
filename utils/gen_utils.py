@@ -44,6 +44,12 @@ def from_numpy_to_var(npx, dtype='float32'):
     else:
         return var
 
+def single_im_to_torch(npx, normalize=True):
+    var = from_numpy_to_var(npx).unsqueeze(0)
+    if normalize:
+        var /= 255
+    return var
+
 def reset_grad(params):
     for p in params:
         if p.grad is not None:
@@ -130,6 +136,36 @@ def tensor_to_label_array(idx_array, num_factors, z_dim):
     '''
     return (np.tile(np.power(z_dim, np.flip(np.arange(num_factors)))[None],
                     (idx_array.shape[0], 1)) * idx_array).sum(1)
+
+def tensor_to_label_grouped(tensor, z_dim, groups):
+    final_label = []
+    group_idx = 0
+    idx = 0
+    while group_idx < len(groups):
+        n_onehots_in_group = groups[group_idx]
+        label = int(sum(tensor[i] * z_dim ** (n_onehots_in_group - (i - idx) - 1) for i in
+                          range(idx, n_onehots_in_group + idx)))
+        final_label.append(label)
+        idx += n_onehots_in_group
+        group_idx+=1
+    return final_label
+
+def tensor_to_label_grouped_batch(tensors, z_dim, groups):
+    final_labels = []
+    group_idx = 0
+    idx = 0
+    while group_idx < len(groups):
+        n_onehots_in_group = groups[group_idx]
+        x = np.array(tensors[:,i] * z_dim ** (n_onehots_in_group - (i - idx) - 1) for i in
+                        range(idx, n_onehots_in_group + idx))
+        labels = np.sum(x, axis=0).astype('int')
+        final_labels.append(labels)
+        idx += n_onehots_in_group
+        group_idx += 1
+    final_labels = np.stack(final_labels).T
+    return final_labels
+
+
 
 
 

@@ -30,7 +30,7 @@ class GridWorld(GoalEnv):
         self.step_size=1
 
         self.actions = np.eye(2*n_agents)
-        self.actions = np.concatenate((self.actions, -1*self.actions)).astype('uint8')
+        self.actions = np.concatenate((self.actions, -1*self.actions)).astype('int8')
 
     def reset(self, state=None):
         if type(state) is np.ndarray:

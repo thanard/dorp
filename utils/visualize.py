@@ -4,9 +4,9 @@ import numpy as np
 import os
 import scipy
 
-# from grid_env.grid_helpers import np_to_var, position_to_image, process_batch, addjust_to_middle, get_max_agent_positions, step_single, step_sequence
+# from grid_env.grid_helpers import np_to_var, position_to_image, get_discrete_representation, addjust_to_middle, get_max_agent_positions, step_single, step_sequence
 from utils.gen_utils import *
-from model import process_batch
+from model import get_discrete_representation
 from torchvision.utils import save_image
 
 def visualize_representations(env, model):
@@ -15,11 +15,12 @@ def visualize_representations(env, model):
     # 3. visualize hamming distance graphs
     if env.name == 'gridworld':
         if env.n_agents == 1:
-            visualize_clusters_online_single(env, model)
+            fig = visualize_clusters_online_single(env, model)
         elif env.n_agents == 2:
-            pass
+            fig = visualize_clusters_online_double(env, model)
     elif env.name.startswith('key'):
         pass
+    return fig
 
 def visualize_clusters_online_single(env, model):
     assert env.n_agents == 1
@@ -86,9 +87,9 @@ def visualize_clusters_online_double_fix_one_agent(model, n_agents, grid_n, fixe
 
     return fig, onehot_0_fig, onehot_1_fig
 
-def visualize_clusters_online_double(model, n_agents, grid_n):
-    plot_0, onehot_0_fig_0, onehot_1_fig_0 = visualize_clusters_online_double_fix_one_agent(model, n_agents, grid_n, fixed_agent=0)
-    plot_1, onehot_0_fig_1, onehot_1_fig_1 = visualize_clusters_online_double_fix_one_agent(model, n_agents, grid_n, fixed_agent=1)
+def visualize_clusters_online_double(env, model):
+    plot_0, onehot_0_fig_0, onehot_1_fig_0 = visualize_clusters_online_double_fix_one_agent(model, env.n_agents, env.grid_n, fixed_agent=0)
+    plot_1, onehot_0_fig_1, onehot_1_fig_1 = visualize_clusters_online_double_fix_one_agent(model, env.n_agents, env.grid_n, fixed_agent=1)
 
     return plot_0, onehot_0_fig_0, onehot_1_fig_0, plot_1, onehot_0_fig_1, onehot_1_fig_1
 
@@ -162,7 +163,11 @@ def sample_trajectory(env, len_traj=400, choose_agent_i=0):
     os = np.array(os).astype('int')
     return os
 
-def test_factorization_fix_agents(model, n_agents, grid_n, len_traj=600, n_traj=10, circular=True, allow_overlap=True):
+def get_factorization_hist(env, model, len_traj=600, n_traj=10):
+    if env.name == 'gridworld':
+        return test_factorization_fix_agents(env, model, len_traj, n_traj)
+
+def test_factorization_fix_agents(env, model, len_traj=600, n_traj=10):
     '''
     Samples random trajectories moving one agent at a time, returns two lists of histograms of hamming distances and onehot changes
     by moving each agent. Histogram lists should be written to tensorboard
@@ -178,14 +183,14 @@ def test_factorization_fix_agents(model, n_agents, grid_n, len_traj=600, n_traj=
     '''
     hamming_hist_lst = []
     onehot_hist_lst = []
-    for i in range(n_agents):
+    for i in range(env.n_agents):
         dist_onehots = []
         for n in range(n_traj):
             dist_onehots = []
-            x = sample_trajectory(n_agents, len_traj=len_traj, choose_agent_i=i)
-            y = position_to_image(x, n_agents, grid_n)
+            x = sample_trajectory(env, len_traj=len_traj, choose_agent_i=i)
+            # y = position_to_image(x, env.n_agents, env.grid_n)
 
-            zs = process_batch(model, y)
+            zs = get_discrete_representation(model, x)
             dist_hamming = np.sum(zs[1:] - zs[:-1] != 0, axis=1)
             prev_z = zs[0]
             for zlabel in zs[1:]:

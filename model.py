@@ -711,7 +711,7 @@ class init_weights_func(object):
         if type(m) == nn.Linear or type(m) == nn.Conv2d:
             torch.nn.init.xavier_uniform_(m.weight, self.scale_factor)
 
-def process_batch(model, sample_ims, single=False):
+def get_discrete_representation(model, sample_ims, single=False):
     '''
     Computes and returns forward pass of CPC model for a batch of processed images
     :param model: CPC model
@@ -730,35 +730,6 @@ def process_batch(model, sample_ims, single=False):
         z_labels.append(zs)
         idx += max_batch_size
     return np.concatenate(z_labels)
-
-# def process_batch_from_vp_grid(model, sample_ims, single=False):
-#     # images from vp model are tensors and rgb,
-#     # so they do not need to be preprocessed as in process_batch
-#     if single:
-#         return model.encode(sample_ims.unsqueeze(0), vis=True).squeeze(0).cpu().numpy()
-#     max_batch_size = 128
-#     idx = 0
-#     z_labels = []
-#     while idx < len(sample_ims):
-#         zs = model.encode(sample_ims[idx:idx + max_batch_size], vis=True).cpu().numpy()
-#         z_labels.append(zs)
-#         idx += max_batch_size
-#     return np.concatenate(z_labels)
-
-def get_labels(model, im):
-    '''
-    returns labels for model.encode(im), converted from onehot to int
-    '''
-    z_labels = process_batch(model, im)
-    zs = tensor_to_label_array(z_labels, model.num_onehots, model.z_dim)
-    return zs
-
-def get_labels_uncompressed(model, im):
-    '''
-    returns onehot labels model.encode(im)
-    '''
-    z_labels = process_batch(model, im)
-    return z_labels
 
 def get_hamming_dists_samples(env, model, n_batches=64, batch_size=512):
     distances = np.array([])
