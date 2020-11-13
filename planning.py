@@ -108,7 +108,7 @@ def get_plan(graph, start, goal):
 def plan_to_goal_and_execute_full_graph(actor, env, full_graph, oracle=False):
     model = actor.cpc_model
     full_graph_copy = full_graph.copy()
-    zstart = tensor_to_label(get_discrete_representation(model, env.render(), single=True),
+    zstart = tensor_to_label(get_discrete_representation(model, env.get_obs(), single=True),
                              model.num_onehots,
                              model.z_dim)
     zgoal = tensor_to_label(get_discrete_representation(actor.cpc_model, env.goal_im, single=True),
@@ -126,8 +126,12 @@ def plan_to_goal_and_execute_full_graph(actor, env, full_graph, oracle=False):
             prev_node = node
         if not reached_node:
             # remove edge and replan
-            full_graph_copy.remove((prev_node, node))
-            plan = get_plan(model, full_graph_copy, env)
+            full_graph_copy.remove_edge(prev_node, node)
+            cur_z = tensor_to_label(get_discrete_representation(actor.cpc_model, env.get_obs(), single=True),
+                                    model.num_onehots,
+                                    model.z_dim)
+            prev_node = cur_z
+            plan = get_plan(full_graph_copy, cur_z, zgoal)
         else:
             return actor.move_to_goal(env, oracle=oracle)
     return False
@@ -136,10 +140,9 @@ def plan_to_goal_and_execute_factorized(actor, env, onehot_graphs, oracle=False)
     model = actor.cpc_model
     # fully factorized planning
     plan_success = [False for _ in range(model.num_onehots)]
-    # import pdb; pdb.set_trace()
     for idx, graph in enumerate(onehot_graphs):
         onehot_graph_copy = onehot_graphs[idx].copy()
-        zstart = get_discrete_representation(model, env.render(), single=True)[idx]
+        zstart = get_discrete_representation(model, env.get_obs(), single=True)[idx]
         zgoal = get_discrete_representation(actor.cpc_model, env.goal_im, single=True)[idx]
         onehot_plan = get_plan(onehot_graph_copy, zstart, zgoal)
         prev_node = onehot_plan[0]
@@ -152,11 +155,14 @@ def plan_to_goal_and_execute_factorized(actor, env, onehot_graphs, oracle=False)
                 if not reached_node:
                     print("failed to reach node", node)
                     break
+                prev_node = node
                 print("reached node", node)
             if not reached_node:
                 # remove edge and replan
-                onehot_graph_copy.remove((prev_node, node))
-                onehot_plan = get_plan(model, onehot_graph_copy, env)
+                onehot_graph_copy.remove_edge(prev_node, node)
+                cur_z = get_discrete_representation(actor.cpc_model, env.get_obs(), single=True)[idx]
+                prev_node = cur_z
+                onehot_plan = get_plan(onehot_graph_copy, cur_z, zgoal)
             else:
                 plan_success[idx] = True
                 break
@@ -171,7 +177,7 @@ def plan_to_goal_and_execute_grouped(actor, env, grouped_graphs, onehot_groups, 
 
     for idx, graph in enumerate(grouped_graphs):
         grouped_graph_copy = grouped_graphs[idx].copy()
-        zstart = tensor_to_label_grouped(get_discrete_representation(model, env.render(), single=True),
+        zstart = tensor_to_label_grouped(get_discrete_representation(model, env.get_obs(), single=True),
                                          model.z_dim, onehot_groups)[idx]
         zgoal = tensor_to_label_grouped(get_discrete_representation(actor.cpc_model, env.goal_im, single=True),
                                         model.z_dim, onehot_groups)[idx]
@@ -184,10 +190,16 @@ def plan_to_goal_and_execute_grouped(actor, env, grouped_graphs, onehot_groups, 
                 reached_node = actor.act(env, node, onehot_idx=idx, groups=onehot_groups, oracle=oracle)
                 if not reached_node:
                     break
+                prev_node = node
             if not reached_node:
                 # remove edge and replan
-                grouped_graph_copy.remove((prev_node, node))
-                plan = get_plan(model, grouped_graph_copy, env)
+                grouped_graph_copy.remove_edge(prev_node, node)
+                cur_z = tensor_to_label_grouped(get_discrete_representation(
+                    actor.cpc_model,
+                    env.get_obs(),
+                    single=True), model.z_dim, onehot_groups)[idx]
+                prev_node = cur_z
+                plan = get_plan(grouped_graph_copy, cur_z, zgoal)
             else:
                 plan_success[idx] = True
     if np.sum(plan_success) == len(plan_success):

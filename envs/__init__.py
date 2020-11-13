@@ -18,7 +18,7 @@ class GoalEnv(object):
         pass
 
     @abc.abstractmethod
-    def render(self):
+    def obs(self):
         """Return current image observation."""
         pass
 

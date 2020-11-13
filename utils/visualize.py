@@ -159,7 +159,7 @@ def sample_trajectory(env, len_traj=400, choose_agent_i=0):
     for i in range(len_traj):
         action = actions[np.random.randint(len(actions))]
         env.step(action)
-        os.append(env.render())
+        os.append(env.get_obs())
     os = np.array(os).astype('int')
     return os
 
@@ -260,3 +260,107 @@ def visualize_density_failed_2agents(cur_pos, cur_node, node_to_go, labels, data
 
     fname = "epoch_%d_failed_to_leave_node_%d" % (epoch, cur_node)
     plt.savefig(os.path.join(savepath, fname))
+
+
+def test_factorization_single_agent_key(env, model, n_traj=10, len_traj=100):
+    '''
+    move agent with and with key, count onehot changes for
+        1. Any agent movement with or without key, not changing key state within trajectory
+        2. Fixing agent position, placing/taking away key
+    '''
+
+    onehot_hist_lst = []
+
+    # 1. -------------- test factorization of agent
+    dist_onehots_a = []
+    for traj in range(n_traj):
+        env.reset()
+        traj_with_key = env.sample_random_trajectory(len_traj, interact_with_key=False)
+        zs = get_discrete_representation(model, np_to_var(traj_with_key))
+
+        prev_z = zs[0]
+        for zlabel in zs[1:]:
+            for k in range(model.num_onehots):
+                if zlabel[k] != prev_z[k]:
+                    dist_onehots_a.append(k)
+            prev_z = zlabel
+
+        env.remove_all_keys()
+        traj_no_key = env.sample_random_trajectory(len_traj, interact_with_key=False)
+        zs = get_discrete_representation(model, traj_no_key)
+        prev_z = zs[0]
+        for zlabel in zs[1:]:
+            for k in range(model.num_onehots):
+                if zlabel[k] != prev_z[k]:
+                    dist_onehots_a.append(k)
+            prev_z = zlabel
+
+    onehots_hist = plt.figure()
+    print("dist_onehots for moving agent", dist_onehots_a)
+    plt.hist(dist_onehots_a, bins=np.arange(model.num_onehots + 1))
+    plt.ylabel("onehot changes only moving agent")
+    onehot_hist_lst.append(onehots_hist)
+
+    # 2. ----------------- test factorization of key(s)
+
+    for key_idx in range(env.n_keys):
+        dist_onehots_k = []
+        for i in range(len_traj):
+            env.reset()
+            z_key = get_discrete_representation(model, env.get_obs(), single=True)
+            env.remove_key(key_idx, 0)
+            z_no_key = get_discrete_representation(model, env.get_obs(), single=True)
+            for k in range(model.num_onehots):
+                if z_no_key[k] != z_key[k]:
+                    dist_onehots_k.append(k)
+        onehots_hist = plt.figure()
+        print("dist_onehots for changing key %d" % key_idx, dist_onehots_k)
+        plt.hist(dist_onehots_k, bins=np.arange(model.num_onehots + 1))
+        plt.ylabel("onehot changes only placing/removing key %d (fixing agent)" % key_idx)
+        onehot_hist_lst.append(onehots_hist)
+    return onehot_hist_lst
+
+
+def visualize_single_agent_and_key(env, model):
+    # try to place agent at each position, with and without key on the grid
+    assert isinstance(env, KeyWall) or isinstance(env, KeyCorridor)
+    map_key = np.full((GRID_N, GRID_N), -1)
+    map_no_key = np.full((GRID_N, GRID_N), -1)
+
+    env.reset()
+    for x in range(GRID_N):
+        for y in range(GRID_N):
+            pos = (x,y)
+            if env.try_place_agent(pos):
+                if model.encoder_form == 'cswm-key-gt':
+                    z = model.encode((from_numpy_to_var(env.get_obs()).unsqueeze(0).permute(0, 3, 1, 2), 1), vis=True)
+                else:
+                    z = model.encode(from_numpy_to_var(env.get_obs()).unsqueeze(0).permute(0,3,1,2), vis=True)
+                z_label = tensor_to_label(z[0], model.num_onehots, model.z_dim)
+                map_key[pos] = z_label
+
+    env.remove_all_keys()
+    for x in range(GRID_N):
+        for y in range(GRID_N):
+            for y in range(GRID_N):
+                pos = (x, y)
+                if env.try_place_agent(pos):
+                    if model.encoder_form == 'cswm-key-gt':
+                        z = model.encode((from_numpy_to_var(env.get_obs()).unsqueeze(0).permute(0, 3, 1, 2), 0), vis=True)
+                    else:
+                        z = model.encode(from_numpy_to_var(env.get_obs()).unsqueeze(0).permute(0, 3, 1, 2), vis=True)
+                    z_label = tensor_to_label(z[0], model.num_onehots, model.z_dim)
+                    map_no_key[pos] = z_label
+
+    print("map with key")
+    print(map_key)
+    print()
+    print("map no key")
+    print(map_no_key)
+
+    fig0 = plt.figure()
+    plt.imshow(map_key, cmap='gist_rainbow')
+    fig1 = plt.figure()
+    plt.imshow(map_no_key, cmap='gist_rainbow')
+
+    return fig0, fig1

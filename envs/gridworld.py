@@ -38,7 +38,7 @@ class GridWorld(GoalEnv):
             return state
         self.state = self.get_reset_position()
         self.goal_state = self.get_reset_position()
-        self.render_goal()
+        self.get_goal_obs()
         return self.state
 
     def get_reset_position(self):
@@ -66,7 +66,7 @@ class GridWorld(GoalEnv):
         """Set the random seed."""
         np.random.seed(seed)
 
-    def render(self):
+    def get_obs(self):
         """Return current image observation as RGB image"""
         colors = list(RGB_COLORS.values())[:self.n_agents]
         im = np.zeros((self.grid_n, self.grid_n, 3))
@@ -80,10 +80,10 @@ class GridWorld(GoalEnv):
             #         im[(x_cur + x) % self.grid_n, (y_cur + y) % self.grid_n] += colors[i]
         return im
 
-    def render_goal(self):
+    def get_goal_obs(self):
         cur_state = self.state
         self.reset(self.goal_state)
-        self.goal_im = self.render()
+        self.goal_im = self.get_obs()
         self.state = cur_state
         return self.goal_im
 

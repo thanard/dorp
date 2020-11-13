@@ -2,31 +2,32 @@ import numpy as np
 import torch
 from torch.autograd import Variable
 import os
-from envs import gridworld
+from envs.gridworld import GridWorld
+from envs.key_door import *
 
 
 def get_env(env_name, args):
     if env_name == "gridworld":
-        env = gridworld.GridWorld(args.n_agents, args.grid_n)
-    # if env_name == 'key-wall':
-    #     env = KeyWall(1)
-    # elif env_name == 'key-corridor':
-    #     env = KeyCorridor(1, 1)
-    # elif env_name == "key-wall-random":
-    #     args.n_keys = 1
-    #     env = KeyWallRandom(1)
-    # elif env_name == 'key-corridor-random':
-    #     args.n_keys = 1
-    #     env = KeyCorridorRandom(1)
-    # elif env_name == 'key-wall-2':
-    #     env = KeyWall2Keys(1)
-    #     args.n_keys = 2
-    # elif env_name == 'key-wall-sequential':
-    #     args.n_keys = 2
-    #     env = KeyWallSequential(1)
-    # elif env_name== 'key-corridor-sequential':
-    #     args.n_keys = 3
-    #     env = KeyCorridorSequential(1)
+        env = GridWorld(args.n_agents, args.grid_n)
+    elif env_name == 'key-wall':
+        env = KeyWall(1)
+    elif env_name == 'key-corridor':
+        env = KeyCorridor(1, 1)
+    elif env_name == "key-wall-random":
+        args.n_keys = 1
+        env = KeyWallRandom(1)
+    elif env_name == 'key-corridor-random':
+        args.n_keys = 1
+        env = KeyCorridorRandom(1)
+    elif env_name == 'key-wall-2':
+        env = KeyWall2Keys(1)
+        args.n_keys = 2
+    elif env_name == 'key-wall-sequential':
+        args.n_keys = 2
+        env = KeyWallSequential(1)
+    elif env_name== 'key-corridor-sequential':
+        args.n_keys = 3
+        env = KeyCorridorSequential(1)
     else:
         raise NotImplementedError("Environment not recognized: %s" % env_name)
     return env

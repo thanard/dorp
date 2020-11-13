@@ -31,6 +31,6 @@ def get_sample_transitions(env, n_traj, len_traj):
         for t in range(len_traj):
             action = env.sample_action()
             env.step(action)
-            traj_ims.append(env.render())
+            traj_ims.append(env.get_obs())
         buffer.append(np.array(traj_ims))
     return np.array(buffer)

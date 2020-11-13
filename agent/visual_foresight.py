@@ -103,7 +103,7 @@ class CEM_actor(Agent):
         print("cur state before goal", env.state)
         goal_im = env.goal_im / 255
         goal_im = np.tile(goal_im, (n_traj * (len_traj * action_repeat), 1, 1, 1))
-        cur_im = env.render()  # 16x16xn
+        cur_im = env.get_obs()  # 16x16xn
         action_seqs = self.sample_action_sequences(env, n_traj, len_traj, action_repeat)
         if oracle:
             pred_seqs = self.step_sequence_batch(env, action_seqs) / 255
@@ -129,13 +129,13 @@ class CEM_actor(Agent):
             env,
             target_node,
             n_traj=1000,
-            len_traj=6,
+            len_traj=7,
             action_repeat=2,
             onehot_idx=-1,
             groups=(),
             oracle=False):
 
-        obs = single_im_to_torch(env.render()).permute(0, 3, 1, 2)
+        obs = single_im_to_torch(env.get_obs()).permute(0, 3, 1, 2)
         node_label_start = self.cpc_model.encode(obs, vis=True).squeeze(0).cpu().numpy()
         action_seqs = self.sample_action_sequences(env, n_traj, len_traj, action_repeat)
 
@@ -163,7 +163,7 @@ class CEM_actor(Agent):
             pred_zs = pred_zs.reshape(n_traj, len_traj * action_repeat, -1)
             for idx in range(self.cpc_model.num_onehots):
                 if idx != onehot_idx:
-                    filters.append(pred_zs[:, -1, onehot_idx] == node_label_start[onehot_idx])
+                    filters.append(pred_zs[:, -1, idx] == node_label_start[idx])
             filters.append(pred_zs[:, -1, onehot_idx] == target_node)
         else:
             # non factorized planning (full graph)
@@ -171,7 +171,6 @@ class CEM_actor(Agent):
             filters = (pred_zs[:, -1, 0] == target_node)
         filters = np.logical_and.reduce(filters)
         possible_seqs = pred_zs[filters][:, :, onehot_idx]  # check for action sequences ending with the node
-
         if possible_seqs.any():
             # choose best sequence based on max number of desired node within sequence
             possible_action_seqs = action_seqs[filters]
@@ -179,7 +178,7 @@ class CEM_actor(Agent):
             best_action_seq = possible_action_seqs[best_seq_idx]
 
             env.step_sequence(best_action_seq) # step through action sequence
-            new_obs = single_im_to_torch(env.render()).permute(0, 3, 1, 2)
+            new_obs = single_im_to_torch(env.get_obs()).permute(0, 3, 1, 2)
             new_node = self.cpc_model.encode(new_obs, vis=True).squeeze(0).cpu().numpy()
             # steps += len(best_action_seq)
             # new_node = new_node[onehot_idx]
@@ -191,7 +190,7 @@ class CEM_actor(Agent):
             elif onehot_idx != -1 and new_node[onehot_idx] != target_node:
                 print("new node does not match: (new node, true node)", new_node[onehot_idx], target_node)
                 print("cur state:", env.state)
-            elif new_node != target_node:
+            elif onehot_idx == -1 and new_node != target_node:
                 print("new node does not match: (new node, true node)", new_node, target_node)
                 print("cur state:", env.state)
                 # save_image(from_numpy_to_var(pred_seqs[filters][best_seq_idx]).permute(0, 3, 1, 2),
@@ -213,7 +212,7 @@ class CEM_actor(Agent):
             traj_ims = []
             for action in actions:
                 env.step(action)
-                new_pos_im = env.render()
+                new_pos_im = env.get_obs()
                 traj_ims.append(new_pos_im)
             new_poses.append(np.array(traj_ims))
         new_poses = np.stack(new_poses)
