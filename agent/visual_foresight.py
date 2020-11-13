@@ -98,32 +98,35 @@ class CEM_actor(Agent):
                      n_traj=1000,
                      len_traj=12,
                      action_repeat=1,
-                     oracle=False):
+                     oracle=False,
+                     max_attempts=3):
         steps = 0
-        print("cur state before goal", env.state)
-        goal_im = env.goal_im / 255
-        goal_im = np.tile(goal_im, (n_traj * (len_traj * action_repeat), 1, 1, 1))
-        cur_im = env.get_obs()  # 16x16xn
-        action_seqs = self.sample_action_sequences(env, n_traj, len_traj, action_repeat)
-        if oracle:
-            pred_seqs = self.step_sequence_batch(env, action_seqs) / 255
-        else:
-            pred_seqs = self.predict_sequence(cur_im, action_seqs)
-        pred_seqs = pred_seqs[:, :len_traj * action_repeat]
-        all_pred_ims = pred_seqs.reshape(n_traj * (len_traj * action_repeat), -1)
-        goal_im = goal_im.reshape(n_traj * (len_traj * action_repeat), -1)
-        im_norms = np.sum((goal_im - all_pred_ims) ** 2, axis=1)
-        min_traj_idx = np.argmin(im_norms) // (len_traj*action_repeat)
-        min_step_idx = np.argmin(im_norms) % (len_traj*action_repeat)
-        best_action_seq = action_seqs[min_traj_idx, :min_step_idx + 1]
-        env.step_sequence(best_action_seq)
-        # if full_plan_ims:
-        #     full_plan_ims.append(single_pos_to_torch(new_pos, n_agents, grid_n))
-        # steps += len(best_action_seq)
-        if env.reached_goal():
-            return True
+        attempt = 0
+        while attempt <  max_attempts:
+            print("Attempting to reached goal ", attempt + 1)
+            print("cur state before goal", env.state)
+            goal_im = env.goal_im / 255
+            goal_im = np.tile(goal_im, (n_traj * (len_traj * action_repeat), 1, 1, 1))
+            cur_im = env.get_obs()  # 16x16xn
+            action_seqs = self.sample_action_sequences(env, n_traj, len_traj, action_repeat)
+            if oracle:
+                pred_seqs = self.step_sequence_batch(env, action_seqs) / 255
+            else:
+                pred_seqs = self.predict_sequence(cur_im, action_seqs)
+            pred_seqs = pred_seqs[:, :len_traj * action_repeat]
+            all_pred_ims = pred_seqs.reshape(n_traj * (len_traj * action_repeat), -1)
+            goal_im = goal_im.reshape(n_traj * (len_traj * action_repeat), -1)
+            im_norms = np.sum((goal_im - all_pred_ims) ** 2, axis=1)
+            min_traj_idx = np.argmin(im_norms) // (len_traj*action_repeat)
+            min_step_idx = np.argmin(im_norms) % (len_traj*action_repeat)
+            best_action_seq = action_seqs[min_traj_idx, :min_step_idx + 1]
+            env.step_sequence(best_action_seq)
+            steps += len(best_action_seq)
+            if env.reached_goal():
+                return True, steps
+            attempt+=1
         print("didn't reach goal (planned goal pos, true goal pos)", env.state, env.goal_state)
-        return False
+        return False, 0
 
     def act(self,
             env,
@@ -134,7 +137,7 @@ class CEM_actor(Agent):
             onehot_idx=-1,
             groups=(),
             oracle=False):
-
+        steps = 0
         obs = single_im_to_torch(env.get_obs()).permute(0, 3, 1, 2)
         node_label_start = self.cpc_model.encode(obs, vis=True).squeeze(0).cpu().numpy()
         action_seqs = self.sample_action_sequences(env, n_traj, len_traj, action_repeat)
@@ -180,7 +183,7 @@ class CEM_actor(Agent):
             env.step_sequence(best_action_seq) # step through action sequence
             new_obs = single_im_to_torch(env.get_obs()).permute(0, 3, 1, 2)
             new_node = self.cpc_model.encode(new_obs, vis=True).squeeze(0).cpu().numpy()
-            # steps += len(best_action_seq)
+            steps += len(best_action_seq)
             # new_node = new_node[onehot_idx]
             if groups and tensor_to_label_grouped(new_node, self.cpc_model.z_dim, groups)[onehot_idx] != target_node:
                 print("new node does not match: (new node, true node)",
@@ -197,8 +200,8 @@ class CEM_actor(Agent):
                 #            "results/grid/plan_test/pred_seq.png", padding=2, pad_value=10)
                 # save_image(model.encoder.to_rgb(cur_im), "results/grid/plan_test/real_im.png", padding=2, pad_value=10)
         else:
-            return False
-        return True
+            return False, steps
+        return True, steps
 
     def step_sequence_batch(self, env, action_seqs):
         '''

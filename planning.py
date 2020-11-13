@@ -114,13 +114,16 @@ def plan_to_goal_and_execute_full_graph(actor, env, full_graph, oracle=False):
     zgoal = tensor_to_label(get_discrete_representation(actor.cpc_model, env.goal_im, single=True),
                             model.num_onehots,
                             model.z_dim)
+    total_steps = 0
     plan = get_plan(full_graph_copy, zstart, zgoal)
-    prev_node = plan[0]
-    node = plan[0]
-    reached_node = True
+    if plan:
+        prev_node = plan[0]
+        node = plan[0]
+        reached_node = True
     while plan:
         for node in plan[1:]:
-            reached_node = actor.act(env, node, oracle=oracle)
+            reached_node, steps  = actor.act(env, node, oracle=oracle)
+            total_steps += steps
             if not reached_node:
                 break
             prev_node = node
@@ -133,25 +136,37 @@ def plan_to_goal_and_execute_full_graph(actor, env, full_graph, oracle=False):
             prev_node = cur_z
             plan = get_plan(full_graph_copy, cur_z, zgoal)
         else:
-            return actor.move_to_goal(env, oracle=oracle)
-    return False
+            reached_goal, steps = actor.move_to_goal(env, oracle=oracle)
+            total_steps = total_steps + steps if reached_goal else 0
+            if reached_goal:
+                return True, total_steps
+            elif len(plan) > 1:
+                # remove edge from second-last node to goal, replan from second-last node
+                full_graph_copy.remove_edge(plan[-2], zgoal)
+                plan = get_plan(full_graph_copy, plan[-2], zgoal)
+                prev_node = plan[-2]
+    print("plan failed\n")
+    return False, 0
 
 def plan_to_goal_and_execute_factorized(actor, env, onehot_graphs, oracle=False):
     model = actor.cpc_model
     # fully factorized planning
     plan_success = [False for _ in range(model.num_onehots)]
+    total_steps = 0
     for idx, graph in enumerate(onehot_graphs):
         onehot_graph_copy = onehot_graphs[idx].copy()
         zstart = get_discrete_representation(model, env.get_obs(), single=True)[idx]
         zgoal = get_discrete_representation(actor.cpc_model, env.goal_im, single=True)[idx]
         onehot_plan = get_plan(onehot_graph_copy, zstart, zgoal)
-        prev_node = onehot_plan[0]
-        node = onehot_plan[0]
-        reached_node = True
+        if onehot_plan:
+            prev_node = onehot_plan[0]
+            node = onehot_plan[0]
+            reached_node = True
         while onehot_plan:
             print("plan for onehot %d: " % idx, onehot_plan)
             for node in onehot_plan[1:]:
-                reached_node = actor.act(env, node, onehot_idx=idx, oracle=oracle)
+                reached_node, steps = actor.act(env, node, onehot_idx=idx, oracle=oracle)
+                total_steps += steps
                 if not reached_node:
                     print("failed to reach node", node)
                     break
@@ -167,14 +182,16 @@ def plan_to_goal_and_execute_factorized(actor, env, onehot_graphs, oracle=False)
                 plan_success[idx] = True
                 break
     if np.sum(plan_success) == len(plan_success):
-        return actor.move_to_goal(env, oracle=oracle)
+        reached_goal, steps = actor.move_to_goal(env, oracle=oracle)
+        total_steps = total_steps+steps if reached_goal else 0
+        return reached_goal, total_steps
     print("plan failed\n")
-    return False
+    return False, 0
 
 def plan_to_goal_and_execute_grouped(actor, env, grouped_graphs, onehot_groups, oracle=False):
     model = actor.cpc_model
     plan_success = [False for _ in range(len(onehot_groups))]
-
+    total_steps = 0
     for idx, graph in enumerate(grouped_graphs):
         grouped_graph_copy = grouped_graphs[idx].copy()
         zstart = tensor_to_label_grouped(get_discrete_representation(model, env.get_obs(), single=True),
@@ -182,12 +199,14 @@ def plan_to_goal_and_execute_grouped(actor, env, grouped_graphs, onehot_groups, 
         zgoal = tensor_to_label_grouped(get_discrete_representation(actor.cpc_model, env.goal_im, single=True),
                                         model.z_dim, onehot_groups)[idx]
         plan = get_plan(grouped_graph_copy, zstart, zgoal)
-        prev_node = plan[0]
-        node = plan[0]
-        reached_node = True
+        if plan:
+            prev_node = plan[0]
+            node = plan[0]
+            reached_node = True
         while plan:
             for node in plan[1:]:
-                reached_node = actor.act(env, node, onehot_idx=idx, groups=onehot_groups, oracle=oracle)
+                reached_node, steps = actor.act(env, node, onehot_idx=idx, groups=onehot_groups, oracle=oracle)
+                total_steps += steps
                 if not reached_node:
                     break
                 prev_node = node
@@ -203,8 +222,11 @@ def plan_to_goal_and_execute_grouped(actor, env, grouped_graphs, onehot_groups, 
             else:
                 plan_success[idx] = True
     if np.sum(plan_success) == len(plan_success):
-        return actor.move_to_goal(env, oracle=oracle)
-    return False
+        reached_goal, steps = actor.move_to_goal(env, oracle=oracle)
+        total_steps = total_steps + steps if reached_goal else 0
+        return reached_goal, total_steps
+    print("plan failed\n")
+    return False, 0
 
 def get_planning_success_rate(actor, env, n_trials, factorized=False, onehot_groups=None, oracle=False):
     success = 0
@@ -213,24 +235,30 @@ def get_planning_success_rate(actor, env, n_trials, factorized=False, onehot_gro
         for trial in range(n_trials):
             print("Trial %d of %d" % (trial, n_trials))
             env.reset()
-            if plan_to_goal_and_execute_grouped(actor, env, grouped_graphs, onehot_groups, oracle=oracle):
-                print("success")
+            success, total_steps = plan_to_goal_and_execute_grouped(actor, env, grouped_graphs, onehot_groups, oracle=oracle)
+            if success:
+                print("success\n")
+                print("total steps: ", total_steps)
                 success += 1
     elif factorized:
         onehot_graphs = create_graph_from_sample_transitions_factorized(actor.cpc_model, env)
         for trial in range(n_trials):
             print("Trial %d of %d" % (trial, n_trials))
             env.reset()
-            if plan_to_goal_and_execute_factorized(actor, env, onehot_graphs, oracle=oracle):
+            success, total_steps = plan_to_goal_and_execute_factorized(actor, env, onehot_graphs, oracle=oracle)
+            if success:
                 print("success\n")
+                print("total steps: ", total_steps)
                 success += 1
     else:
         full_graph = create_graph_from_sample_transitions_full(actor.cpc_model, env)
         for trial in range(n_trials):
             print("Trial %d of %d" % (trial, n_trials))
             env.reset()
-            if plan_to_goal_and_execute_full_graph(actor, env, full_graph, oracle=oracle):
+            success, total_steps = plan_to_goal_and_execute_full_graph(actor, env, full_graph, oracle=oracle)
+            if success:
                 print("success")
+                print("total steps: ", total_steps)
                 success += 1
     rate = float(success)/n_trials
     print("success rate: %.3f" % rate)
