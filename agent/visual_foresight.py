@@ -6,21 +6,32 @@ from utils.gen_utils import *
 from video_prediction.setup_predictor import setup_predictor
 from video_prediction.vpred_model_interface import VPred_Model_Interface
 from video_prediction.datasets.numpy_datasets.grid_helpers import to_rgb_np
+from model import CPC
 import json
 
 class CEM_actor(Agent):
     def __init__(self):
         super(CEM_actor, self).__init__()
 
-    def get_vp_model(self, vp_modeldir):
-        pass
+    def load_vp_model(self, vp_modeldir, sequence_length=14, num_action_sequences=1000):
+        self.setup_vp(vp_modeldir, sequence_length, num_action_sequences)
 
-    def load_cpc_model(self, cpc_modeldir='', model=None):
+
+    def load_cpc_model(self, n_agents, cpc_modeldir='', model=None):
         if model:
             self.cpc_model = model
         else:
-            # TODO: load model from file
-            pass
+            with open(os.path.join(cpc_modeldir, "%d-agents-model" % n_agents), 'r') as f:
+                cpc_params = json.load(f)
+
+            grid_n = cpc_params.pop('grid_width')
+            n_epochs = cpc_params.pop('n_epochs')
+            model = CPC(**cpc_params).cuda()
+            print("loading model.....")
+            modelpath = os.path.join(cpc_modeldir, "%d-agents-model" % n_agents)
+            model.load_state_dict(torch.load(modelpath))
+            model.eval()
+            self.cpc_model = model
 
     def setup_vp(self, result_folder, sequence_length, num_action_sequences):
         '''
@@ -96,7 +107,7 @@ class CEM_actor(Agent):
     def move_to_goal(self,
                      env,
                      n_traj=1000,
-                     len_traj=12,
+                     len_traj=14,
                      action_repeat=1,
                      oracle=False,
                      max_attempts=3):

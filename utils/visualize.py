@@ -13,14 +13,15 @@ def visualize_representations(env, model):
     # 1. visualize clustering if number of agents is 1 or 2
     # 2. visualize factorization with histogram
     # 3. visualize hamming distance graphs
+    figs = None
     if env.name == 'gridworld':
         if env.n_agents == 1:
-            fig = visualize_clusters_online_single(env, model)
+            figs = visualize_clusters_online_single(env, model)
         elif env.n_agents == 2:
-            fig = visualize_clusters_online_double(env, model)
-    elif env.name.startswith('key'):
-        pass
-    return fig
+            figs = visualize_clusters_online_double(env, model)
+    if env.name == 'key-wall' or env.name == 'key-corridor':
+        figs = visualize_single_agent_and_key(env, model)
+    return figs
 
 def visualize_clusters_online_single(env, model):
     assert env.n_agents == 1
@@ -166,6 +167,8 @@ def sample_trajectory(env, len_traj=400, choose_agent_i=0):
 def get_factorization_hist(env, model, len_traj=600, n_traj=10):
     if env.name == 'gridworld':
         return test_factorization_fix_agents(env, model, len_traj, n_traj)
+    elif env.name == 'key-wall' or env.name == 'key-corridor':
+        return test_factorization_single_agent_key(env, model)
 
 def test_factorization_fix_agents(env, model, len_traj=600, n_traj=10):
     '''
@@ -262,7 +265,7 @@ def visualize_density_failed_2agents(cur_pos, cur_node, node_to_go, labels, data
     plt.savefig(os.path.join(savepath, fname))
 
 
-def test_factorization_single_agent_key(env, model, n_traj=10, len_traj=100):
+def test_factorization_single_agent_key(env, model, n_traj=10, len_traj=200):
     '''
     move agent with and with key, count onehot changes for
         1. Any agent movement with or without key, not changing key state within trajectory
@@ -276,7 +279,7 @@ def test_factorization_single_agent_key(env, model, n_traj=10, len_traj=100):
     for traj in range(n_traj):
         env.reset()
         traj_with_key = env.sample_random_trajectory(len_traj, interact_with_key=False)
-        zs = get_discrete_representation(model, np_to_var(traj_with_key))
+        zs = get_discrete_representation(model, traj_with_key)
 
         prev_z = zs[0]
         for zlabel in zs[1:]:
@@ -331,11 +334,12 @@ def visualize_single_agent_and_key(env, model):
     for x in range(GRID_N):
         for y in range(GRID_N):
             pos = (x,y)
+            obs = env.get_obs()
             if env.try_place_agent(pos):
                 if model.encoder_form == 'cswm-key-gt':
-                    z = model.encode((from_numpy_to_var(env.get_obs()).unsqueeze(0).permute(0, 3, 1, 2), 1), vis=True)
+                    z = model.encode((from_numpy_to_var(obs).unsqueeze(0).permute(0, 3, 1, 2), 1), vis=True)
                 else:
-                    z = model.encode(from_numpy_to_var(env.get_obs()).unsqueeze(0).permute(0,3,1,2), vis=True)
+                    z = model.encode(from_numpy_to_var(obs).unsqueeze(0).permute(0, 3, 1, 2), vis=True)
                 z_label = tensor_to_label(z[0], model.num_onehots, model.z_dim)
                 map_key[pos] = z_label
 
@@ -344,11 +348,12 @@ def visualize_single_agent_and_key(env, model):
         for y in range(GRID_N):
             for y in range(GRID_N):
                 pos = (x, y)
+                obs = env.get_obs()
                 if env.try_place_agent(pos):
                     if model.encoder_form == 'cswm-key-gt':
-                        z = model.encode((from_numpy_to_var(env.get_obs()).unsqueeze(0).permute(0, 3, 1, 2), 0), vis=True)
+                        z = model.encode((from_numpy_to_var(obs).unsqueeze(0).permute(0, 3, 1, 2), 0), vis=True)
                     else:
-                        z = model.encode(from_numpy_to_var(env.get_obs()).unsqueeze(0).permute(0, 3, 1, 2), vis=True)
+                        z = model.encode(from_numpy_to_var(obs).unsqueeze(0).permute(0, 3, 1, 2), vis=True)
                     z_label = tensor_to_label(z[0], model.num_onehots, model.z_dim)
                     map_no_key[pos] = z_label
 

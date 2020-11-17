@@ -59,6 +59,7 @@ def train(env,
             epoch_lb.append(lb)
 
             if epoch == 0:
+                # for testing visualizations quickly
                 break
 
             C_loss.backward()
@@ -96,7 +97,9 @@ def train(env,
                                actor,
                                env,
                                epoch,
-                               plan_freq)
+                               plan_freq,
+                               n_traj=n_traj,
+                               len_traj=len_traj)
 
 def log(env,
         writer,
@@ -118,20 +121,28 @@ def log(env,
         for n in range(env.n_agents + 1):
             writer.add_scalar('Eval_hamming/avg_hamming_%d' % n, np.sum(hammings == n), epoch)
         cluster_fig = visualize_representations(env, model)
-        if model.num_onehots == 1:
-            writer.add_figure("Eval/clusters_single_agent",
-                              cluster_fig,
-                              global_step=epoch)
-        elif model.num_onehots == 2:
-            plot_0, onehot_0_fig_0, onehot_1_fig_0, plot_1, onehot_0_fig_1, onehot_1_fig_1 = cluster_fig
-            writer.add_figure("clusters_vis_double_agent",
-                              [plot_0, plot_1],
-                              global_step=epoch)
-            writer.add_figure("onehot_0_clusters_vis_double_agent",
-                              [onehot_0_fig_0, onehot_0_fig_1],
-                              global_step=epoch)
-            writer.add_figure("onehot_1_clusters_vis_double_agent",
-                              [onehot_1_fig_0, onehot_1_fig_1],
+
+        if env.name == 'gridworld':
+            if model.num_onehots == 1:
+                writer.add_figure("Eval/clusters_single_agent",
+                                  cluster_fig,
+                                  global_step=epoch)
+            elif model.num_onehots == 2:
+                plot_0, onehot_0_fig_0, onehot_1_fig_0, plot_1, onehot_0_fig_1, onehot_1_fig_1 = cluster_fig
+                writer.add_figure("clusters_vis_double_agent",
+                                  [plot_0, plot_1],
+                                  global_step=epoch)
+                writer.add_figure("onehot_0_clusters_vis_double_agent",
+                                  [onehot_0_fig_0, onehot_0_fig_1],
+                                  global_step=epoch)
+                writer.add_figure("onehot_1_clusters_vis_double_agent",
+                                  [onehot_1_fig_0, onehot_1_fig_1],
+                                  global_step=epoch)
+
+        elif env.name.startswith('key') and cluster_fig:
+            fig_key, fig_no_key = cluster_fig
+            writer.add_figure("Clustering with and without key on grid",
+                              [fig_key, fig_no_key],
                               global_step=epoch)
 
         if model.encoder_form.startswith('cswm'):
@@ -154,14 +165,16 @@ def log(env,
                              global_step=epoch)
 
         # Visualize onehot Distribution
-        hammings_hist, onehots_hist = test_factorization_fix_agents(env, model)
-        writer.add_figure('hamming distance distribution fixing each agent',
-                          hammings_hist,
-                          global_step=epoch)
-        writer.add_figure('which onehot changes fixing each agent',
-                          onehots_hist,
-                          global_step=epoch)
-    if epoch > 50:
+        factorization_hists = get_factorization_hist(env, model)
+        if factorization_hists:
+            hammings_hist, onehots_hist = factorization_hists
+            writer.add_figure('hamming distance distribution fixing each agent',
+                              hammings_hist,
+                              global_step=epoch)
+            writer.add_figure('which onehot changes fixing each independent entity',
+                              onehots_hist,
+                              global_step=epoch)
+    if epoch > 10:
         torch.save(model.state_dict(), model_fname)
 
     plt.close('all')
@@ -170,12 +183,35 @@ def log_planning_evals(writer,
                        actor,
                        env,
                        epoch,
-                       plan_freq):
+                       plan_freq,
+                       n_traj,
+                       len_traj):
 
     ### Planning
     if writer and epoch % plan_freq == 0:
         # currently uses oracle dynamics for evaluation
-        factorized_planning_success_rate = get_planning_success_rate(actor, env, 10, factorized=True, oracle=True)
-        writer.add_scalar('Eval/execute_plan_success_rate_factorized_graphs_with_replan',
-                          factorized_planning_success_rate,
-                          epoch)
+        if env.name == 'gridworld':
+            factorized_planning_success_rate = get_planning_success_rate(actor,
+                                                                         env,
+                                                                         10,
+                                                                         factorized=True,
+                                                                         oracle=True,
+                                                                         n_traj=n_traj,
+                                                                         len_traj=len_traj,
+                                                                         )
+            writer.add_scalar('Eval/execute_plan_success_rate_factorized_graphs_with_replan',
+                              factorized_planning_success_rate,
+                              epoch)
+        else:
+            factorized_planning_success_rate = get_planning_success_rate(actor,
+                                                                         env,
+                                                                         10,
+                                                                         factorized=False,
+                                                                         oracle=True,
+                                                                         n_traj=n_traj,
+                                                                         len_traj=len_traj,
+                                                                         )
+            writer.add_scalar('Eval/execute_plan_success_rate_full_graph_with_replan',
+                              factorized_planning_success_rate,
+                              epoch)
+

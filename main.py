@@ -40,7 +40,7 @@ parser.add_argument('--plan_freq', type=int, default=50) # plan evaluation every
 parser.add_argument('--h_distance', type=int, default=8)
 parser.add_argument('--baseline', type=str, default='', help="htm")
 parser.add_argument('--reset_rate', type=int, default=1)
-parser.add_argument('--n_traj', type=int, default=20000)
+parser.add_argument('--n_traj', type=int, default=40000)
 parser.add_argument('--len_traj', type=int, default=2)
 
 args = parser.parse_args()
@@ -63,7 +63,7 @@ cpc_params = {
               'encoder': args.encoder,
               'z_dim': args.z_dim,
               'batch_size': args.batch_size,
-              'in_channels': args.n_agents,
+              'in_channels': 3, # inputs are rgb
               'mode': mode,
               'input_dim': args.grid_n,
               'W_form': args.W,
@@ -94,7 +94,7 @@ n_epochs = args.n_epochs
 print(model)
 
 actor = CEM_actor()
-actor.load_cpc_model(model=model)
+actor.load_cpc_model(args.n_agents, model=model)
 
 train(env,
       actor,

@@ -6,6 +6,7 @@ class GoalEnv(object):
     def __init__(self):
         self.state = None
         self.goal_im = None
+        self.env_name = None
 
     @abc.abstractmethod
     def reset(self):
@@ -18,7 +19,7 @@ class GoalEnv(object):
         pass
 
     @abc.abstractmethod
-    def obs(self):
+    def get_obs(self):
         """Return current image observation."""
         pass
 
@@ -32,11 +33,21 @@ class GoalEnv(object):
         pass
 
     @abc.abstractmethod
+    def step_sequence(self, action_seq):
+        """Step through an action sequence.
+
+        :param action:
+        :return:
+        """
+
+        pass
+
+    @abc.abstractmethod
     def sample_action(self):
         """Return a uniformly sampled action from the action space"""
         pass
 
     @abc.abstractmethod
     def reached_goal(self):
-        """Return True if the state of the environment matches the goal state"""
+        """Return True if the state of the environment matches the goal state (or is within a certain distance to goal"""
         pass
