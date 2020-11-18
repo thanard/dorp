@@ -13,6 +13,7 @@ def train(env,
           actor,
           num_epochs,
           output_dir,
+          step_size=1,
           vis_freq=10,
           plan_freq=50,
           writer=None,
@@ -41,7 +42,7 @@ def train(env,
         data_size = len(buffer)*len(buffer[0])
         n_batches = data_size // model.batch_size
         for it in range(n_batches):
-            anchors, positives = sample_anchors_positives(buffer, model.batch_size)
+            anchors, positives = sample_anchors_positives(buffer, model.batch_size, step_size=step_size)
             o = np_to_var(np.transpose(anchors, (0, 3, 1, 2)))
             o_next = np_to_var(np.transpose(positives, (0, 3, 1, 2)))
             ### Compute loss
