@@ -4,9 +4,14 @@ import abc
 class GoalEnv(object):
     """Goal-based Environment"""
     def __init__(self):
-        self.state = None
         self.goal_im = None
-        self.env_name = None
+        self.name = None
+        self.n_agents = 1
+
+    @abc.abstractmethod
+    def get_state(self):
+        """Resets the state of the environment and the goal, returning an initial observation (images)."""
+        pass
 
     @abc.abstractmethod
     def reset(self):

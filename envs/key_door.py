@@ -179,6 +179,9 @@ class KeyCorridor(KeyDoor):
         self.door_poses = []
         self.name = 'key-corridor'
 
+    def get_state(self):
+        return [self.agent_pos, to_list(self.carrying)]
+
     def setup_walls(self):
         for i in range(GRID_N):
             self.wall_poses.add((i, 5))
@@ -233,7 +236,7 @@ class KeyCorridor(KeyDoor):
         return self.agent_pos
 
     def sample_and_process_goal(self):
-        cur_state = self.state
+        cur_state = self.get_state()
         self.grid = np.zeros((GRID_N, GRID_N))
         self.reset_keys_and_doors()
         self.setup_walls()
@@ -307,7 +310,6 @@ class KeyCorridor(KeyDoor):
         pos: array size 2*n_agents
         Tries to place the agents at specified (x,y) position
         Returns false if this is not possible
-        **Only use this method for visualization
         '''
         # remove all current agents
         for i in range(self.n_agents):
@@ -411,6 +413,7 @@ class KeyCorridor(KeyDoor):
         self.grid = np.zeros((GRID_N, GRID_N))
         self.reset_keys_and_doors()
         self.setup_walls()
+        self.process_grid()
 
         new_pos, carrying = state[0], state[1]
         if self.try_place_agent(new_pos):
@@ -418,7 +421,8 @@ class KeyCorridor(KeyDoor):
                 if len(agent_carrying) > 0:
                     for key_idx in agent_carrying:
                         self.remove_key(key_idx, agent_idx)
-                self.process_grid()
+                new_agent_pos = self.get_one_agent_pos(new_pos, 0)
+                self.grid[new_agent_pos] = OBJ_TO_IDX['agent0']
                 self.state = state
             return state
         return None

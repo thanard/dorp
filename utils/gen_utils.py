@@ -4,6 +4,7 @@ from torch.autograd import Variable
 import os
 from envs.gridworld import GridWorld
 from envs.key_door import *
+from envs.maze import Maze
 
 
 def get_env(env_name, args):
@@ -28,6 +29,8 @@ def get_env(env_name, args):
     elif env_name== 'key-corridor-sequential':
         args.n_keys = 3
         env = KeyCorridorSequential(1)
+    elif env_name == 'maze':
+        env = Maze()
     else:
         raise NotImplementedError("Environment not recognized: %s" % env_name)
     return env

@@ -327,7 +327,7 @@ class CSWM(nn.Module):
         self.input_dim = input_dim
         self.hdim = input_dim
         self.out_onehots = out_onehots
-        self.in_channels = 3
+        self.in_channels = in_channels
         self.num_layers = num_layers
         self.normalization = normalization
         self.gt_extractor = gt_extractor
@@ -375,7 +375,6 @@ class CSWM(nn.Module):
             return nn.Identity()
         else:
             raise NotImplementedError("normalization type not recognized: %s" % normalization)
-        return
 
     def expand_input(self, input):
         return input.repeat_interleave(4, dim=3).repeat_interleave(4, dim=2)
@@ -885,19 +884,13 @@ def get_discrete_representation(model, sample_ims, single=False):
         idx += max_batch_size
     return np.concatenate(z_labels)
 
-def get_hamming_dists_samples(env, model, n_batches=64, batch_size=512):
-    distances = np.array([])
-    for batch in range(n_batches):
-        data = get_sample_transitions(env, batch_size, 2)
-        anchors, positives = data[:, 0], data[:, 1]
-        anchors = np_to_var(np.transpose(anchors, (0, 3, 1, 2)))
-        positives = np_to_var(np.transpose(positives, (0, 3, 1, 2)))
-        z = model.encode(anchors, vis=True).cpu().numpy()
-        z_next = model.encode(positives, vis=True).cpu().numpy()
-        distances_batch = np.sum((z != z_next), axis=1)
-        if not distances.any():
-            distances = distances_batch
-        else:
-            distances = np.concatenate((distances, distances_batch))
-    print("hamming dist shape", distances.shape)
+def get_hamming_dists_samples(model, buffer):
+    distances = []
+    for idx in range(len(buffer)):
+        traj = buffer[idx]
+        zs = get_discrete_representation(model, traj)
+        for i in range(len(buffer[idx]) - 1):
+            d = np.sum((zs[i] != zs[i+1]))
+            distances.append(d)
+    distances = np.array(distances)
     return distances

@@ -2,9 +2,9 @@ import matplotlib.pyplot as plt
 from envs.gridworld import AGENT_SIZES, RGB_COLORS
 import numpy as np
 import os
-import scipy
+from envs.key_door import *
+from envs.gridworld import *
 
-# from grid_env.grid_helpers import np_to_var, position_to_image, get_discrete_representation, addjust_to_middle, get_max_agent_positions, step_single, step_sequence
 from utils.gen_utils import *
 from model import get_discrete_representation
 from torchvision.utils import save_image
@@ -337,9 +337,9 @@ def visualize_single_agent_and_key(env, model):
             obs = env.get_obs()
             if env.try_place_agent(pos):
                 if model.encoder_form == 'cswm-key-gt':
-                    z = model.encode((from_numpy_to_var(obs).unsqueeze(0).permute(0, 3, 1, 2), 1), vis=True)
+                    z = model.encode((np_to_var(obs).unsqueeze(0).permute(0, 3, 1, 2), 1), vis=True)
                 else:
-                    z = model.encode(from_numpy_to_var(obs).unsqueeze(0).permute(0, 3, 1, 2), vis=True)
+                    z = model.encode(np_to_var(obs).unsqueeze(0).permute(0, 3, 1, 2), vis=True)
                 z_label = tensor_to_label(z[0], model.num_onehots, model.z_dim)
                 map_key[pos] = z_label
 
@@ -351,9 +351,9 @@ def visualize_single_agent_and_key(env, model):
                 obs = env.get_obs()
                 if env.try_place_agent(pos):
                     if model.encoder_form == 'cswm-key-gt':
-                        z = model.encode((from_numpy_to_var(obs).unsqueeze(0).permute(0, 3, 1, 2), 0), vis=True)
+                        z = model.encode((np_to_var(obs).unsqueeze(0).permute(0, 3, 1, 2), 0), vis=True)
                     else:
-                        z = model.encode(from_numpy_to_var(obs).unsqueeze(0).permute(0, 3, 1, 2), vis=True)
+                        z = model.encode(np_to_var(obs).unsqueeze(0).permute(0, 3, 1, 2), vis=True)
                     z_label = tensor_to_label(z[0], model.num_onehots, model.z_dim)
                     map_no_key[pos] = z_label
 

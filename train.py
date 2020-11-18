@@ -21,7 +21,9 @@ def train(env,
           ce_temp=1.0,
           baseline='',
           n_traj=50,
-          len_traj=1000):
+          len_traj=1000,
+          dataset=None # None if using online data collection
+          ):
 
     losses = []
     est_lowerbounds = []
@@ -35,16 +37,13 @@ def train(env,
         print("-----Epoch %d------" % epoch)
         epoch_losses = []
         epoch_lb = []
-        buffer = get_sample_transitions(env, n_traj, len_traj)
-        data_size = n_traj * len_traj
+        buffer = dataset if type(dataset) is np.ndarray else get_sample_transitions(env, n_traj, len_traj)
+        data_size = len(buffer)*len(buffer[0])
         n_batches = data_size // model.batch_size
         for it in range(n_batches):
             anchors, positives = sample_anchors_positives(buffer, model.batch_size)
             o = np_to_var(np.transpose(anchors, (0, 3, 1, 2)))
             o_next = np_to_var(np.transpose(positives, (0, 3, 1, 2)))
-            save_image(o, "test.png", padding=5)
-            save_image(o_next, "test_1.png", padding=5)
-
             ### Compute loss
             z_a = model.encode(o, continuous=True)
             z_pos = model.encode(o_next)
@@ -91,7 +90,8 @@ def train(env,
                 model,
                 epoch,
                 vis_freq,
-                model_fname)
+                model_fname,
+                buffer)
 
             log_planning_evals(writer,
                                actor,
@@ -111,14 +111,16 @@ def log(env,
         model,
         epoch,
         vis_freq,
-        model_fname):
+        model_fname,
+        buffer):
+    model.eval()
 
     writer.add_scalar('Train/training loss', avg_loss, epoch)
     writer.add_scalar('Train/k', model.k, epoch)
 
     if epoch % vis_freq == 0:
-        hammings = get_hamming_dists_samples(env, model, n_batches=64, batch_size=256)
-        for n in range(env.n_agents + 1):
+        hammings = get_hamming_dists_samples(model, buffer)
+        for n in range(model.num_onehots+1):
             writer.add_scalar('Eval_hamming/avg_hamming_%d' % n, np.sum(hammings == n), epoch)
         cluster_fig = visualize_representations(env, model)
 
@@ -188,6 +190,7 @@ def log_planning_evals(writer,
                        len_traj):
 
     ### Planning
+    actor.cpc_model.eval()
     if writer and epoch % plan_freq == 0:
         # currently uses oracle dynamics for evaluation
         if env.name == 'gridworld':
@@ -202,7 +205,7 @@ def log_planning_evals(writer,
             writer.add_scalar('Eval/execute_plan_success_rate_factorized_graphs_with_replan',
                               factorized_planning_success_rate,
                               epoch)
-        else:
+        elif env.name.startswith('key'):
             factorized_planning_success_rate = get_planning_success_rate(actor,
                                                                          env,
                                                                          10,

@@ -37,11 +37,12 @@ parser.add_argument('--scale_weights', type=float, default=1.)
 parser.add_argument('--savepath', type=str, default='results/grid')
 parser.add_argument('--vis_freq', type=int, default=5) # visualize every n epochs
 parser.add_argument('--plan_freq', type=int, default=50) # plan evaluation every n epochs
-parser.add_argument('--h_distance', type=int, default=8)
 parser.add_argument('--baseline', type=str, default='', help="htm")
 parser.add_argument('--reset_rate', type=int, default=1)
-parser.add_argument('--n_traj', type=int, default=40000)
+parser.add_argument('--n_traj', type=int, default=30000)
 parser.add_argument('--len_traj', type=int, default=2)
+
+parser.add_argument('--dataset_path', type=str, default="") # specify path if using offline dataset
 
 args = parser.parse_args()
 
@@ -65,7 +66,7 @@ cpc_params = {
               'batch_size': args.batch_size,
               'in_channels': 3, # inputs are rgb
               'mode': mode,
-              'input_dim': args.grid_n,
+              'input_dim': env.grid_n,
               'W_form': args.W,
               'num_filters': args.num_filters,
               'num_onehots': args.num_onehots,
@@ -78,12 +79,12 @@ cpc_params = {
 all_params = cpc_params.copy()
 all_params['n_epochs'] = args.n_epochs
 all_params['grid_width'] = args.grid_n
-params_path = os.path.join(savepath, "%s-params.json" % args.env)
+params_path = os.path.join(savepath, "model-hparams.json")
 with open(params_path, 'w') as fp:
     json.dump(all_params, fp, indent=2, sort_keys=True)
 
 model = CPC(**cpc_params)
-model_path = os.path.join(args.model_dir, "%s-params.json" % args.env)
+model_path = os.path.join(args.model_dir, "model-hparams.json")
 if args.model_dir and os.path.exists(model_path):
     print("### Model Loaded ###")
     model.load_state_dict(torch.load(model_path))
@@ -96,6 +97,12 @@ print(model)
 actor = CEM_actor()
 actor.load_cpc_model(args.n_agents, model=model)
 
+
+dataset = None
+if args.dataset_path:
+    # precollect dataset of transitions:
+    dataset = np.load(args.dataset_path)
+
 train(env,
       actor,
       n_epochs,
@@ -104,8 +111,9 @@ train(env,
       plan_freq=args.plan_freq,
       writer=writer,
       loss_form='ce',
-      lr=1e-3,
-      ce_temp=1.0,
+      lr=args.lr,
+      ce_temp=args.ce_temp,
       baseline='',
       n_traj=args.n_traj,
-      len_traj=args.len_traj)
+      len_traj=args.len_traj,
+      dataset = dataset)

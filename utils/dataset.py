@@ -1,15 +1,5 @@
 import numpy as np
 
-# def get_anchors_positives_batch(data, labels, batch_size, step_size=1):
-#     data = np.stack(data)
-#     labels = np.array(labels)
-#     idx, t = get_idx_t(batch_size, step_size, data)
-#     anchors = data[idx, t]
-#     labels_anchors = labels[idx, t]
-#     positives = data[idx, t+step_size]
-#     labels_positives = labels[idx, t + 1]
-#     return anchors, labels_anchors, positives, labels_positives
-
 def sample_anchors_positives(data, batch_size, step_size=1):
     data = np.stack(data)
     idx, t = get_idx_t(batch_size, step_size, data)

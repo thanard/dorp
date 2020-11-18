@@ -21,7 +21,7 @@ class CEM_actor(Agent):
         if model:
             self.cpc_model = model
         else:
-            with open(os.path.join(cpc_modeldir, "%d-agents-model" % n_agents), 'r') as f:
+            with open(os.path.join(cpc_modeldir, "model-hparams.json"), 'r') as f:
                 cpc_params = json.load(f)
 
             grid_n = cpc_params.pop('grid_width')
@@ -115,7 +115,7 @@ class CEM_actor(Agent):
         attempt = 0
         while attempt <  max_attempts:
             print("Attempting to reached goal ", attempt + 1)
-            print("cur state before goal", env.state)
+            print("cur state before goal", env.get_state())
             goal_im = env.goal_im / 255
             goal_im = np.tile(goal_im, (n_traj * (len_traj * action_repeat), 1, 1, 1))
             cur_im = env.get_obs()  # 16x16xn
@@ -123,7 +123,7 @@ class CEM_actor(Agent):
             if oracle:
                 pred_seqs = self.step_sequence_batch(env, action_seqs) / 255
             else:
-                pred_seqs = self.predict_sequence(cur_im, action_seqs)
+                pred_seqs = self.predict_sequence(cur_im[None]/255, action_seqs)
             pred_seqs = pred_seqs[:, :len_traj * action_repeat]
             all_pred_ims = pred_seqs.reshape(n_traj * (len_traj * action_repeat), -1)
             goal_im = goal_im.reshape(n_traj * (len_traj * action_repeat), -1)
@@ -136,7 +136,7 @@ class CEM_actor(Agent):
             if env.reached_goal():
                 return True, steps
             attempt+=1
-        print("didn't reach goal (planned goal pos, true goal pos)", env.state, env.goal_state)
+        print("didn't reach goal (planned goal pos, true goal pos)", env.get_state(), env.goal_state)
         return False, 0
 
     def act(self,
@@ -149,14 +149,15 @@ class CEM_actor(Agent):
             groups=(),
             oracle=False):
         steps = 0
-        obs = single_im_to_torch(env.get_obs()).permute(0, 3, 1, 2)
-        node_label_start = self.cpc_model.encode(obs, vis=True).squeeze(0).cpu().numpy()
+        obs = env.get_obs()
+        obs_torch = single_im_to_torch(obs).permute(0, 3, 1, 2)
+        node_label_start = self.cpc_model.encode(obs_torch, vis=True).squeeze(0).cpu().numpy()
         action_seqs = self.sample_action_sequences(env, n_traj, len_traj, action_repeat)
 
         if oracle:
             pred_seqs = self.step_sequence_batch(env, action_seqs)
         else:
-            pred_seqs = self.predict_sequence(obs, action_seqs)
+            pred_seqs = self.predict_sequence(obs[None]/255, action_seqs)*255
 
         pred_seqs = pred_seqs[:, :len_traj * action_repeat]
         all_pred_ims = pred_seqs.reshape(n_traj * (len_traj * action_repeat), env.grid_n, env.grid_n, 3)
@@ -172,6 +173,7 @@ class CEM_actor(Agent):
                 if idx != onehot_idx:
                     filters.append(pred_zs[:, -1, idx] == node_label_start[idx])
             filters.append(pred_zs[:, -1, onehot_idx] == target_node)
+            filters = np.logical_and.reduce(filters)
         elif onehot_idx != -1:
             # fully factorized planning
             pred_zs = pred_zs.reshape(n_traj, len_traj * action_repeat, -1)
@@ -179,11 +181,13 @@ class CEM_actor(Agent):
                 if idx != onehot_idx:
                     filters.append(pred_zs[:, -1, idx] == node_label_start[idx])
             filters.append(pred_zs[:, -1, onehot_idx] == target_node)
+            filters = np.logical_and.reduce(filters)
         else:
             # non factorized planning (full graph)
+            pred_zs = tensor_to_label_array(pred_zs, self.cpc_model.num_onehots, self.cpc_model.z_dim)
             pred_zs = pred_zs.reshape(n_traj, len_traj * action_repeat, -1)
             filters = (pred_zs[:, -1, 0] == target_node)
-        filters = np.logical_and.reduce(filters)
+
         possible_seqs = pred_zs[filters][:, :, onehot_idx]  # check for action sequences ending with the node
         if possible_seqs.any():
             # choose best sequence based on max number of desired node within sequence
@@ -192,6 +196,7 @@ class CEM_actor(Agent):
             best_action_seq = possible_action_seqs[best_seq_idx]
 
             env.step_sequence(best_action_seq) # step through action sequence
+            print("env state", env.get_state())
             new_obs = single_im_to_torch(env.get_obs()).permute(0, 3, 1, 2)
             new_node = self.cpc_model.encode(new_obs, vis=True).squeeze(0).cpu().numpy()
             steps += len(best_action_seq)
@@ -200,13 +205,13 @@ class CEM_actor(Agent):
                 print("new node does not match: (new node, true node)",
                       tensor_to_label_grouped(new_node, self.cpc_model.z_dim, groups)[onehot_idx],
                       target_node)
-                print("cur state:", env.state)
+                print("cur state:", env.get_state())
             elif onehot_idx != -1 and new_node[onehot_idx] != target_node:
                 print("new node does not match: (new node, true node)", new_node[onehot_idx], target_node)
-                print("cur state:", env.state)
-            elif onehot_idx == -1 and new_node != target_node:
+                print("cur state:", env.get_state())
+            elif onehot_idx == -1 and tensor_to_label(new_node, self.cpc_model.num_onehots, self.cpc_model.z_dim) != target_node:
                 print("new node does not match: (new node, true node)", new_node, target_node)
-                print("cur state:", env.state)
+                print("cur state:", env.get_state())
                 # save_image(from_numpy_to_var(pred_seqs[filters][best_seq_idx]).permute(0, 3, 1, 2),
                 #            "results/grid/plan_test/pred_seq.png", padding=2, pad_value=10)
                 # save_image(model.encoder.to_rgb(cur_im), "results/grid/plan_test/real_im.png", padding=2, pad_value=10)
@@ -219,7 +224,7 @@ class CEM_actor(Agent):
         Only used for GT dynamics model, not used for final evaluation
         :return:
         '''
-        cur_state = env.state
+        cur_state = env.get_state()
         new_poses = []
         for actions in action_seqs:
             env.reset(cur_state)

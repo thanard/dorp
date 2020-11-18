@@ -18,7 +18,7 @@ RGB_COLORS = {
 # AGENT_SIZES = [[2,4], [4,2], [2,4], [2,4], [4,2]]
 # AGENT_SIZES = [[1,1], [1,1], [1,1], [1,1], [1,1]]
 # AGENT_SIZES = [[3,3], [3,3], [3,3], [3,3], [3,3]]
-AGENT_SIZES = [[1,2], [2,1], [1,2], [2,1], [1,2], [2,1], [1,2], [2,1], [1,2], [2,1]]
+AGENT_SIZES = [[2,4], [4,2], [1,2], [2,1], [1,2], [2,1], [1,2], [2,1], [1,2], [2,1]]
 
 class GridWorld(GoalEnv):
 
@@ -31,6 +31,9 @@ class GridWorld(GoalEnv):
 
         self.actions = np.eye(2*n_agents)
         self.actions = np.concatenate((self.actions, -1*self.actions)).astype('int8')
+
+    def get_state(self):
+        return self.state
 
     def reset(self, state=None):
         if type(state) is np.ndarray:

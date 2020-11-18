@@ -1,11 +1,9 @@
-import scipy
 import networkx as nx
-from networkx import NetworkXException
 from utils.gen_utils import *
 from utils.dataset import *
 from model import get_discrete_representation
 
-def create_graph_from_sample_transitions_full(model, env, n_traj=50, len_traj=1200):
+def create_graph_from_sample_transitions_full(model, env, n_traj=50, len_traj=1200, dataset=None):
     '''
     Creates graphs from sampled transition data
     :param model: CPC model
@@ -17,7 +15,12 @@ def create_graph_from_sample_transitions_full(model, env, n_traj=50, len_traj=12
     '''
     print("creating graph....")
     graph = nx.Graph()
-    data = get_sample_transitions(env, n_traj, len_traj)
+    if dataset:
+        data = dataset
+        n_traj = len(dataset)
+        len_traj = len(dataset[0])
+    else:
+        data = get_sample_transitions(env, n_traj, len_traj)
     for idx in range(n_traj):
         traj = data[idx]
         zs = get_discrete_representation(model, traj)
@@ -34,10 +37,15 @@ def create_graph_from_sample_transitions_full(model, env, n_traj=50, len_traj=12
     print("edges", graph.edges())
     return graph
 
-def create_graph_from_sample_transitions_factorized(model, env, n_traj=50, len_traj=400):
+def create_graph_from_sample_transitions_factorized(model, env, n_traj=50, len_traj=400, dataset=None):
     print("creating graphs....")
     onehot_graphs = [nx.Graph() for _ in range(model.num_onehots)]
-    data = get_sample_transitions(env, n_traj, len_traj)
+    if dataset:
+        data = dataset
+        n_traj = len(dataset)
+        len_traj = len(dataset[0])
+    else:
+        data = get_sample_transitions(env, n_traj, len_traj)
     for idx in range(n_traj):
         traj = data[idx]
         zs = get_discrete_representation(model, traj)
@@ -60,11 +68,17 @@ def create_graph_from_sample_transitions_grouped_onehots(model,
                                                           env,
                                                           groups,
                                                           n_traj=50,
-                                                          len_traj=400):
+                                                          len_traj=400,
+                                                         dataset=None):
     print("creating graphs....")
     assert sum(groups) == model.num_onehots
     onehot_graphs = [nx.Graph() for _ in range(len(groups))]
-    data = get_sample_transitions(env, n_traj, len_traj)
+    if dataset:
+        data = dataset
+        n_traj = len(dataset)
+        len_traj = len(dataset[0])
+    else:
+        data = get_sample_transitions(env, n_traj, len_traj)
     for idx in range(n_traj):
         traj = data[idx]
         zs = get_discrete_representation(model, traj)
@@ -104,12 +118,12 @@ def plan_to_goal_and_execute_full_graph(actor, env, full_graph, oracle=False):
                             model.num_onehots,
                             model.z_dim)
     total_steps = 0
-    # import pdb; pdb.set_trace()
     plan = get_plan(full_graph_copy, zstart, zgoal)
     if plan:
         prev_node = plan[0]
         node = plan[0]
         reached_node = True
+
     while plan:
         print("plan from %d to %d: " % (zstart, zgoal), plan)
         for node in plan[1:]:
@@ -139,8 +153,8 @@ def plan_to_goal_and_execute_full_graph(actor, env, full_graph, oracle=False):
                 print("Failed to reach goal, trying to replan...")
                 # remove edge from second-last node to goal, replan from second-last node
                 full_graph_copy.remove_edge(plan[-2], zgoal)
-                plan = get_plan(full_graph_copy, plan[-2], zgoal)
                 prev_node = plan[-2]
+                plan = get_plan(full_graph_copy, plan[-2], zgoal)
             else:
                 break
     print("plan failed\n")
@@ -238,12 +252,14 @@ def get_planning_success_rate(actor,
                               onehot_groups=None,
                               oracle=False,
                               n_traj=50,
-                              len_traj=1200):
+                              len_traj=1200,
+                              dataset=None):
     successes = 0
     if onehot_groups:
         grouped_graphs = create_graph_from_sample_transitions_grouped_onehots(actor.cpc_model, env, onehot_groups,
                                                                               n_traj=n_traj,
-                                                                              len_traj=len_traj)
+                                                                              len_traj=len_traj,
+                                                                              dataset=dataset)
         for trial in range(n_trials):
             print("Trial %d of %d" % (trial, n_trials))
             env.reset()
@@ -255,7 +271,8 @@ def get_planning_success_rate(actor,
     elif factorized:
         onehot_graphs = create_graph_from_sample_transitions_factorized(actor.cpc_model, env,
                                                                         n_traj=n_traj,
-                                                                        len_traj=len_traj)
+                                                                        len_traj=len_traj,
+                                                                        dataset=dataset)
         for trial in range(n_trials):
             print("Trial %d of %d" % (trial, n_trials))
             env.reset()
@@ -267,7 +284,8 @@ def get_planning_success_rate(actor,
     else:
         full_graph = create_graph_from_sample_transitions_full(actor.cpc_model, env,
                                                                n_traj=n_traj,
-                                                               len_traj=len_traj
+                                                               len_traj=len_traj,
+                                                               dataset=dataset
                                                                )
         for trial in range(n_trials):
             print("Trial %d of %d" % (trial, n_trials))
