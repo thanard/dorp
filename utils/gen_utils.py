@@ -94,6 +94,10 @@ def setup_savepath(kwargs):
                 included.append(key)
     if kwargs['encoder'].startswith("cswm-key") or kwargs['encoder'].startswith("cswm-multi"):
         included.extend(["env", "n_agents", "n_keys", "n_traj", "len_traj", "key_alpha", 'ce_temp'])
+    if kwargs['random_step_size']:
+        included.append('random_step_size')
+    if kwargs['switching_factor_freq'] > 1:
+        included.append('switching_factor_freq')
     final_savepath = savepath
     for key in included:
         if key in kwargs.keys():

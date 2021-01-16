@@ -44,6 +44,8 @@ parser.add_argument('--len_traj', type=int, default=2)
 
 parser.add_argument('--dataset_path', type=str, default="") # specify path if using offline dataset
 
+parser.add_argument('--random_step_size', action="store_true")
+parser.add_argument('--switching_factor_freq', type=int, default=1)
 args = parser.parse_args()
 
 env = get_env(args.env, args)
@@ -117,4 +119,6 @@ train(env,
       baseline='',
       n_traj=args.n_traj,
       len_traj=args.len_traj,
-      dataset = dataset)
+      dataset=dataset,
+      kwargs={"random_step_size": args.random_step_size,
+              "switching_factor_freq": args.switching_factor_freq})

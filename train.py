@@ -23,8 +23,8 @@ def train(env,
           baseline='',
           n_traj=50,
           len_traj=1000,
-          dataset=None # None if using online data collection
-          ):
+          dataset=None, # None if using online data collection
+          kwargs=None):
 
     losses = []
     est_lowerbounds = []
@@ -38,11 +38,11 @@ def train(env,
         print("-----Epoch %d------" % epoch)
         epoch_losses = []
         epoch_lb = []
-        buffer = dataset if type(dataset) is np.ndarray else get_sample_transitions(env, n_traj, len_traj)
+        buffer = dataset if type(dataset) is np.ndarray else get_sample_transitions(env, n_traj, len_traj, switching_factor_freq=kwargs['switching_factor_freq'])
         data_size = len(buffer)*len(buffer[0])
         n_batches = data_size // model.batch_size
         for it in range(n_batches):
-            anchors, positives = sample_anchors_positives(buffer, model.batch_size, step_size=step_size)
+            anchors, positives = sample_anchors_positives(buffer, model.batch_size, step_size=step_size, random_step_size=kwargs['random_step_size'])
             o = np_to_var(np.transpose(anchors, (0, 3, 1, 2)))
             o_next = np_to_var(np.transpose(positives, (0, 3, 1, 2)))
             ### Compute loss

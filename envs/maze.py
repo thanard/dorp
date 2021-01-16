@@ -7,7 +7,7 @@ import matplotlib.cm as cm
 import numpy as np
 import time
 
-from safety_gym.envs.engine import Engine
+# from safety_gym.envs.engine import Engine
 from PIL import Image
 from imageio import imwrite
 from envs import GoalEnv
@@ -81,61 +81,61 @@ class Maze(GoalEnv):
         """Return True if the state of the environment matches the goal state"""
         pass
 
-class SafetyGymMaze(Engine):
-    def __init__(self, agent, robot_xy = None):
-        surrounding_walls = set()
-        for i in (np.linspace(0, 1, 15) * 7 - 3.5):
-            surrounding_walls.add((i, 3.5))
-            surrounding_walls.add((i, -3.5))
-            surrounding_walls.add((-3.5, i))
-            surrounding_walls.add((3.5, i))
-
-        self.wall_locs = [(2, -2.5), (1.5, -2), (1, -1.5),
-                          (2, -1),
-                          (-1, 0), (-0.5, 0), (0, 0), (0.5, 0), (1, 0), (0, -0.5), (0, -1),
-                          (0.5, 2), (1, 2), (1.5, 2), (1.5,1.5), (2, 2), (2.5, 2),
-                          (-1.5, 2), (-2, 1.5), (-2, 1), (-2.5, 1), (-2.5, 0.5), (-1, 2),
-                          (-2.5, -1), (-2.5, -1.5), (-2.5, -2), (-2.5, -2.5), (-2.5, -3),
-                          (-0.5, -3), (-1, -3), (-0.5, -2.5)]  # simple maze wall locations
-
-        self.wall_locs.extend(surrounding_walls)
-
-        config = {
-            'robot_base': 'xmls/%s.xml' % agent,
-            'task': 'none',
-            # 'observe_goal_lidar': True,
-            'observe_walls': True,
-            # 'observe_hazards': True,
-            'observation_flatten': True,
-            # 'observe_box_lidar': True,
-            'constrain_hazards': True,
-            'walls_locations': self.wall_locs,
-            'walls_num': len(self.wall_locs),
-            'walls_size': 0.25,
-            'observe_qpos': True,
-        }
-
-        if robot_xy:
-            config['robot_locations'] = robot_xy
-
-        super(SafetyGymMaze, self).__init__(config)
-        # register(id='SimpleMaze-v0',
-        #          entry_point='safety_gym.envs.mujoco:Engine',
-        #          kwargs={'config': config})
-
-    def detect_wall_contact(self, pos):
-        for wall in self.wall_locs:
-            wall = np.array(wall)
-            pos = np.array(pos)
-            if np.all(np.abs(np.array(wall-pos)) < (0.25 + 1e-1)):
-                return True
-        return False
-
-    def viewer_setup(self):
-        print("cam", self.viewer.cam.type)
-
-    def set_num_steps(self, num_steps):
-        self.world.num_steps = num_steps
+# class SafetyGymMaze(Engine):
+#     def __init__(self, agent, robot_xy = None):
+#         surrounding_walls = set()
+#         for i in (np.linspace(0, 1, 15) * 7 - 3.5):
+#             surrounding_walls.add((i, 3.5))
+#             surrounding_walls.add((i, -3.5))
+#             surrounding_walls.add((-3.5, i))
+#             surrounding_walls.add((3.5, i))
+#
+#         self.wall_locs = [(2, -2.5), (1.5, -2), (1, -1.5),
+#                           (2, -1),
+#                           (-1, 0), (-0.5, 0), (0, 0), (0.5, 0), (1, 0), (0, -0.5), (0, -1),
+#                           (0.5, 2), (1, 2), (1.5, 2), (1.5,1.5), (2, 2), (2.5, 2),
+#                           (-1.5, 2), (-2, 1.5), (-2, 1), (-2.5, 1), (-2.5, 0.5), (-1, 2),
+#                           (-2.5, -1), (-2.5, -1.5), (-2.5, -2), (-2.5, -2.5), (-2.5, -3),
+#                           (-0.5, -3), (-1, -3), (-0.5, -2.5)]  # simple maze wall locations
+#
+#         self.wall_locs.extend(surrounding_walls)
+#
+#         config = {
+#             'robot_base': 'xmls/%s.xml' % agent,
+#             'task': 'none',
+#             # 'observe_goal_lidar': True,
+#             'observe_walls': True,
+#             # 'observe_hazards': True,
+#             'observation_flatten': True,
+#             # 'observe_box_lidar': True,
+#             'constrain_hazards': True,
+#             'walls_locations': self.wall_locs,
+#             'walls_num': len(self.wall_locs),
+#             'walls_size': 0.25,
+#             'observe_qpos': True,
+#         }
+#
+#         if robot_xy:
+#             config['robot_locations'] = robot_xy
+#
+#         super(SafetyGymMaze, self).__init__(config)
+#         # register(id='SimpleMaze-v0',
+#         #          entry_point='safety_gym.envs.mujoco:Engine',
+#         #          kwargs={'config': config})
+#
+#     def detect_wall_contact(self, pos):
+#         for wall in self.wall_locs:
+#             wall = np.array(wall)
+#             pos = np.array(pos)
+#             if np.all(np.abs(np.array(wall-pos)) < (0.25 + 1e-1)):
+#                 return True
+#         return False
+#
+#     def viewer_setup(self):
+#         print("cam", self.viewer.cam.type)
+#
+#     def set_num_steps(self, num_steps):
+#         self.world.num_steps = num_steps
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Sample trajectories from safety gym')
