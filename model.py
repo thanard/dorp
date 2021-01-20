@@ -126,8 +126,9 @@ class CPC(nn.Module):
         self.separate_W = separate_W
 
         self.k = nn.Parameter(torch.tensor(1.))
-        self.W = nn.Parameter(torch.rand(z_dim * self.num_onehots, z_dim * self.num_onehots))
         self.I = torch.eye(z_dim * self.num_onehots).cuda()
+        self.labels = torch.arange(batch_size).long().cuda()
+        self.unif_w = nn.Parameter(torch.rand(z_dim * self.num_onehots, z_dim * self.num_onehots))
 
     def encode(self, x, vis=False, continuous=False):
         if vis:
@@ -137,9 +138,9 @@ class CPC(nn.Module):
             x = self.encoder(x, continuous)
             return x
 
-    def get_W(self):
+    def get_w(self):
         if self.W_form == 0: # random W matrix
-            W = self.W
+            W = self.unif_w
         elif self.W_form == 1: # identity matrix
             W = self.I
         elif self.W_form == 3:
@@ -149,9 +150,8 @@ class CPC(nn.Module):
                 for i in range(self.num_onehots):
                     base[self.z_dim*i:self.z_dim*i+self.z_dim, self.z_dim*i:self.z_dim*i+self.z_dim] = base_submatrix
             else:
-                base = 2 * torch.eye(self.z_dim * self.num_onehots) - torch.ones(self.z_dim * self.num_onehots,
-                                                                                 self.z_dim * self.num_onehots)
-            W = torch.exp(self.k) * ((torch.sigmoid(self.W) + self.alpha*self.I) * base.cuda())
+                base = 2 * self.I - 1
+            W = (torch.exp(self.k) * (torch.sigmoid(self.unif_w) + self.alpha * self.I) * base)
         else:
             raise NotImplementedError("W form %d not used" % self.W_form)
         return W
@@ -169,8 +169,7 @@ class CPC(nn.Module):
         z = z.view(z.size(0), -1)
         z = z.unsqueeze(2)  # bs x z_dim x 1
         z_next = z_next.unsqueeze(2)
-        W = self.get_W()
-        w = W.repeat(z.size(0), 1, 1)
+        w = self.get_w().repeat(z.size(0), 1, 1)
         f_out = torch.bmm(torch.bmm(z_next.permute(0, 2, 1), w), z)
         f_out = f_out.squeeze()
 
@@ -187,8 +186,7 @@ class CPC(nn.Module):
         assert z_a.size(0) == z_pos.size(0)
         z_pos = z_pos.reshape(z_pos.size(0), -1)
         z_a = z_a.reshape(z_a.size(0), -1)
-        W = self.get_W()
-        Wz = torch.matmul(W, z_pos.T)  # (z_dim,B)
+        Wz = torch.matmul(self.get_w(), z_pos.T)  # (z_dim,B)
         logits = torch.matmul(z_a, Wz)  # (B,B)
         logits = logits - torch.max(logits, 1)[0][:, None]
         return logits/ce_temp
@@ -200,6 +198,18 @@ class CPC(nn.Module):
         norm = 0.5 / (sigma ** 2)
         diff = state - next_state
         return norm * diff.pow(2).sum(2).mean(1)
+
+    def get_loss(self, loss_form, z_a, z_pos, ce_temp=1.):
+        import time
+        start = time.time()
+        if loss_form == 'ce':
+            CE = nn.CrossEntropyLoss()
+            logits = self.compute_logits(z_a, z_pos, ce_temp)
+            return CE(logits, self.labels)
+        elif loss_form == 'hinge':
+            return get_hinge_loss(self, z_a, z_pos)
+        else:
+            raise NotImplementedError("Loss form not recognized: " + loss_form)
 
     def forward(self, *input):
         return self.log_density(*input)
@@ -376,14 +386,9 @@ class CSWM(nn.Module):
         else:
             raise NotImplementedError("normalization type not recognized: %s" % normalization)
 
-    def expand_input(self, input):
-        return input.repeat_interleave(4, dim=3).repeat_interleave(4, dim=2)
-
     def conv_forward(self, inputs):
         batch_size = inputs.size(0)
         x = inputs*10
-        # if inputs.size(2) == 16:
-        #     x = self.expand_input(x)
         if self.gt_extractor:
             attn_maps = x
         else:
@@ -408,21 +413,21 @@ class CSWM(nn.Module):
 
     def forward(self, inputs, continuous=False):
         x, attn_maps = self.conv_forward(inputs)
-        reg = self.get_attn_map_reg(attn_maps)
+        # reg = self.get_attn_map_reg(attn_maps)
         if self.mode == 'continuous':
-            return x, reg, attn_maps
+            return x, attn_maps
         elif self.mode == 'single_encoder':
             x = self.ln(x)
             x = F.gumbel_softmax(x, dim=2, tau=self.temp, hard=True)
-            return x, reg, attn_maps
+            return x, attn_maps
         elif self.mode == 'double_encoder':
             if continuous:
                 x = F.softmax(x, dim=2)
-                return x, reg, attn_maps
+                return x, attn_maps
             else:
                 x = self.ln(x)
                 x = F.gumbel_softmax(x, dim=2, tau=self.temp, hard=True)
-                return x, reg, attn_maps
+                return x, attn_maps
         else:
             raise NotImplementedError
 
@@ -845,16 +850,6 @@ def get_hinge_loss(model, state, next_state, hinge=1):
     loss = pos_loss + neg_loss
     return loss
 
-def get_loss(loss_form, model, z_a, z_pos, ce_temp=1.):
-    if loss_form == 'ce':
-        CE = nn.CrossEntropyLoss()
-        logits = model.compute_logits(z_a, z_pos, ce_temp)
-        labels = torch.arange(logits.shape[0]).long().cuda()
-        return CE(logits, labels)
-    elif loss_form == 'hinge':
-        return get_hinge_loss(model, z_a, z_pos)
-    else:
-        raise NotImplementedError("Loss form not recognized: " + loss_form)
 
 class init_weights_func(object):
     def __init__(self, scale_factor=1.):
@@ -872,13 +867,13 @@ def get_discrete_representation(model, sample_ims, single=False):
     :return: np array of z outputs [sample_size, model.z_dim]
     '''
     if single:
-        return model.encode(np_to_var(sample_ims).unsqueeze(0).permute(0, 3, 1, 2), vis=True).squeeze(
+        return model.encode(np_to_var(sample_ims).unsqueeze(0), vis=True).squeeze(
             0).cpu().numpy()
-    max_batch_size = 64
+    max_batch_size = 4096
     idx = 0
     z_labels = []
     while idx < len(sample_ims):
-        zs = model.encode(np_to_var(sample_ims[idx:idx + max_batch_size]).permute(0, 3, 1, 2),
+        zs = model.encode(np_to_var(sample_ims[idx:idx + max_batch_size]),
                           vis=True).cpu().numpy()
         z_labels.append(zs)
         idx += max_batch_size

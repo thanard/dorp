@@ -111,10 +111,10 @@ def get_plan(graph, start, goal):
 def plan_to_goal_and_execute_full_graph(actor, env, full_graph, oracle=False):
     model = actor.cpc_model
     full_graph_copy = full_graph.copy()
-    zstart = tensor_to_label(get_discrete_representation(model, env.get_obs(), single=True),
+    zstart = tensor_to_label(get_discrete_representation(model, env.get_obs().transpose(2, 0, 1), single=True),
                              model.num_onehots,
                              model.z_dim)
-    zgoal = tensor_to_label(get_discrete_representation(actor.cpc_model, env.goal_im, single=True),
+    zgoal = tensor_to_label(get_discrete_representation(actor.cpc_model, env.goal_im.transpose(2, 0, 1), single=True),
                             model.num_onehots,
                             model.z_dim)
     total_steps = 0
@@ -167,8 +167,8 @@ def plan_to_goal_and_execute_factorized(actor, env, onehot_graphs, oracle=False)
     total_steps = 0
     for idx, graph in enumerate(onehot_graphs):
         onehot_graph_copy = onehot_graphs[idx].copy()
-        zstart = get_discrete_representation(model, env.get_obs(), single=True)[idx]
-        zgoal = get_discrete_representation(actor.cpc_model, env.goal_im, single=True)[idx]
+        zstart = get_discrete_representation(model, env.get_obs().transpose(2, 0, 1), single=True)[idx]
+        zgoal = get_discrete_representation(actor.cpc_model, env.goal_im.transpose(2, 0, 1), single=True)[idx]
         onehot_plan = get_plan(onehot_graph_copy, zstart, zgoal)
         if onehot_plan:
             prev_node = onehot_plan[0]

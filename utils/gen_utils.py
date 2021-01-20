@@ -36,20 +36,15 @@ def get_env(env_name, args):
     return env
 
 def np_to_var(npx, normalize=True):
-    var = from_numpy_to_var(npx)
+    var = torch.from_numpy(npx).float()
+    var = var.cuda(non_blocking=True)
     if normalize:
         var /= 255
     return var
 
-def from_numpy_to_var(npx, dtype='float32'):
-    var = Variable(torch.from_numpy(npx.astype(dtype)))
-    if torch.cuda.is_available():
-        return var.cuda()
-    else:
-        return var
 
 def single_im_to_torch(npx, normalize=True):
-    var = from_numpy_to_var(npx).unsqueeze(0)
+    var = torch.from_numpy(npx).float().cuda().unsqueeze(0)
     if normalize:
         var /= 255
     return var

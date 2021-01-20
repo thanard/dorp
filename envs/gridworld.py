@@ -15,10 +15,10 @@ RGB_COLORS = {
 } # color of each agent in order
 
 # AGENT_SIZES = [[7,7], [7,7], [7,7], [7,7], [7,7]]
-# AGENT_SIZES = [[2,4], [4,2], [2,4], [2,4], [4,2]]
+AGENT_SIZES = [[2, 4], [4, 2], [2, 4], [2, 4], [4, 2], [4, 2]]
 # AGENT_SIZES = [[1,1], [1,1], [1,1], [1,1], [1,1]]
 # AGENT_SIZES = [[3,3], [3,3], [3,3], [3,3], [3,3]]
-AGENT_SIZES = [[2,4], [4,2], [1,2], [2,1], [1,2], [2,1], [1,2], [2,1], [1,2], [2,1]]
+# AGENT_SIZES = [[1,2], [2,1], [1,2], [2,1], [1,2], [2,1], [1,2], [2,1], [1,2], [2,1]]
 
 class GridWorld(GoalEnv):
 
@@ -31,6 +31,7 @@ class GridWorld(GoalEnv):
 
         self.actions = np.eye(2*n_agents)
         self.actions = np.concatenate((self.actions, -1*self.actions)).astype('int8')
+        self.action_per_entity = ((1, 0), (0, 1), (-1, 0), (0, -1))
 
     def get_state(self):
         return self.state
@@ -142,6 +143,12 @@ class GridWorld(GoalEnv):
         for action in action_seq:
             cur_pos = self.step(action)
         return self.state
+
+    def sample_action_by_idx(self, idx):
+        action = np.zeros(len(self.actions[0]))
+        rand_action = np.random.choice(len(self.action_per_entity))
+        action[2*idx:2*idx+2] = self.action_per_entity[rand_action]
+        return action
 
     def sample_action(self):
         action_idx = np.random.choice(len(self.actions))

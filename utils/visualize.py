@@ -157,12 +157,13 @@ def sample_trajectory(env, len_traj=400, choose_agent_i=0):
     actions = np.concatenate((actions[choose_agent_i*2: choose_agent_i*2+2],
                               actions[env.n_agents*2+choose_agent_i*2: env.n_agents*2+choose_agent_i*2+2]))
     os = []
+    env.reset()
     for i in range(len_traj):
         action = actions[np.random.randint(len(actions))]
         env.step(action)
         os.append(env.get_obs())
-    os = np.array(os).astype('int')
-    return os
+    os = np.array(os)
+    return os.transpose((0, 3, 1, 2))
 
 def get_factorization_hist(env, model, len_traj=600, n_traj=10):
     if env.name == 'gridworld':

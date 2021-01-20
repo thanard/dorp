@@ -6,6 +6,7 @@ from model import *
 from planning import *
 import matplotlib.pyplot as plt
 from torchvision.utils import make_grid
+from utils.dataset import TrajectoryDataset
 import time
 
 # Train representation
@@ -25,65 +26,78 @@ def train(env,
           len_traj=1000,
           dataset=None, # None if using online data collection
           kwargs=None):
-
-    losses = []
-    est_lowerbounds = []
+    # Setting up model
+    torch.backends.cudnn.benchmark = True
     model = actor.cpc_model
     model.cuda()
     C_solver = optim.Adam(model.parameters(), lr=lr)
     params = list(model.parameters())
 
-    for epoch in range(num_epochs):
+    # Setting up data
+    data = dataset if type(dataset) is np.ndarray \
+        else get_sample_transitions(env, n_traj, len_traj,
+                                    switching_factor_freq=kwargs['switching_factor_freq'])
+    dataloader = torch.utils.data.DataLoader(
+        TrajectoryDataset(data, step_size, kwargs['random_step_size']),
+        batch_size=model.batch_size,
+        shuffle=True,
+        drop_last=True,
+        # num_workers=0,
+        pin_memory=True
+    )
+    data_size = len(data) * len(data[0])
+    n_batches = data_size // model.batch_size
+    if not os.path.exists(kwargs['dataset_path']):
+        os.makedirs(kwargs['dataset_path'])
+        np.save(os.path.join(kwargs['dataset_path'], 'dataset.npy'),
+                data)
+
+    iter_idx = 0
+    start_start = time.time()
+    for epoch in range(1, num_epochs + 1):
         model.train()
         print("-----Epoch %d------" % epoch)
-        epoch_losses = []
-        epoch_lb = []
-        buffer = dataset if type(dataset) is np.ndarray else get_sample_transitions(env, n_traj, len_traj, switching_factor_freq=kwargs['switching_factor_freq'])
-        data_size = len(buffer)*len(buffer[0])
-        n_batches = data_size // model.batch_size
-        for it in range(n_batches):
-            anchors, positives = sample_anchors_positives(buffer, model.batch_size, step_size=step_size, random_step_size=kwargs['random_step_size'])
-            o = np_to_var(np.transpose(anchors, (0, 3, 1, 2)))
-            o_next = np_to_var(np.transpose(positives, (0, 3, 1, 2)))
+        # start = time.time()
+        for anchors, positives in dataloader:
+            # print("preprocessing", round(1e3*(time.time() - start)))
+            # start = time.time()
+            o = anchors.cuda(non_blocking=True)
+            # print("np_2_var_1", round(1e3*(time.time() - start)))
+            # start = time.time()
+            o_next = positives.cuda(non_blocking=True)
+            # print("np_2_var_2", round(1e3*(time.time() - start)))
+            # start = time.time()
             ### Compute loss
-            z_a = model.encode(o, continuous=True)
-            z_pos = model.encode(o_next)
-            if len(z_a) == 3:
-                z_a, attn_reg_a, attn_maps_o = z_a
-            if len(z_pos) == 3:
-                z_pos, attn_reg_pos, attn_maps_o_next = z_pos
-
-            C_loss = get_loss(loss_form, model, z_a, z_pos, ce_temp=ce_temp)
-            epoch_losses.append(C_loss.item())
-            lb = np.log(model.batch_size) - C_loss.item()
-            epoch_lb.append(lb)
-
-            if epoch == 0:
-                # for testing visualizations quickly
-                break
+            z_a, attn_maps_o = model.encode(o, continuous=True)
+            z_pos, attn_maps_o_next = model.encode(o_next)
+            # print("compute embeddings", round(1e3*(time.time() - start)))
+            # start = time.time()
+            C_loss = model.get_loss(loss_form, z_a, z_pos, ce_temp=ce_temp)
+            # print("compute loss", round(1e3*(time.time() - start)))
+            # start = time.time()
 
             C_loss.backward()
             C_solver.step()
-
-            if it % 100 == 0:
-                print("C_loss: ", C_loss)
-                print("Est lowerbound: ", np.log(model.batch_size) - C_loss.item())
-                print()
             reset_grad(params)
+            # print("backward pass", round(1e3*(time.time() - start)))
+            # start = time.time()
 
-        avg_loss = np.mean(np.array(epoch_losses))
-        avg_lb = np.mean(np.array(epoch_lb))
-        losses.append(avg_loss)
-        est_lowerbounds.append(avg_lb)
-        save_plots(output_dir, losses, est_lowerbounds)
+            if iter_idx % 100 == 0:
+                print("fps", iter_idx*model.batch_size/(time.time() - start_start))
+                print("Total time", round(time.time()-start_start))
+                log_loss = C_loss.item()
+                print("## Iter %d/%d ##" % (iter_idx, n_batches))
+                print("C_loss: ", log_loss)
+                print()
+            iter_idx += 1
 
-        model_fname = os.path.join(output_dir, '%d-agents-model' % env.n_agents)
+        model_fname = os.path.join(output_dir, 'cpc-model')
 
         # ### Log visualizations to tensorboard
         if writer:
             log(env,
                 writer,
-                avg_loss,
+                log_loss,
                 o,
                 o_next,
                 attn_maps_o,
@@ -92,7 +106,7 @@ def train(env,
                 epoch,
                 vis_freq,
                 model_fname,
-                buffer)
+                data)
 
             log_planning_evals(writer,
                                actor,

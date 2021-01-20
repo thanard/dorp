@@ -14,10 +14,10 @@ parser.add_argument('--env', type=str, default='gridworld')
 parser.add_argument('--seed', type=int, default=0)
 parser.add_argument('--grid_n', type=int, default=16)
 parser.add_argument('--step_size', type=int, default=1)
-parser.add_argument('--model_dir', type=str, default="")
+# parser.add_argument('--model_dir', type=str, default="")
 
 # Model params:
-parser.add_argument('--n_epochs', type=int, default=800)
+parser.add_argument('--n_epochs', type=int, default=1000)
 parser.add_argument('--encoder', type=str, default='cswm')
 parser.add_argument('--n_agents', type=int, default=1)
 parser.add_argument('--z_dim', type=int, default=32)
@@ -86,11 +86,15 @@ with open(params_path, 'w') as fp:
     json.dump(all_params, fp, indent=2, sort_keys=True)
 
 model = CPC(**cpc_params)
-model_path = os.path.join(args.model_dir, "model-hparams.json")
-if args.model_dir and os.path.exists(model_path):
+model_path = os.path.join(savepath, 'cpc-model')
+if os.path.exists(model_path):
+    # args.model_dir = savepath
+# model_path = os.path.join(args.model_dir, "cpc-model")
+# if args.model_dir and os.path.exists(model_path):
     print("### Model Loaded ###")
     model.load_state_dict(torch.load(model_path))
 else:
+    print("### Initialize Model ###")
     model.apply(init_weights_func(args.scale_weights))
 
 n_epochs = args.n_epochs
@@ -101,9 +105,9 @@ actor.load_cpc_model(args.n_agents, model=model)
 
 
 dataset = None
-if args.dataset_path:
+if args.dataset_path and os.path.exists(args.dataset_path):
     # precollect dataset of transitions:
-    dataset = np.load(args.dataset_path)
+    dataset = np.load(os.path.join(args.dataset_path, 'dataset.npy'))
 
 train(env,
       actor,
@@ -120,5 +124,6 @@ train(env,
       n_traj=args.n_traj,
       len_traj=args.len_traj,
       dataset=dataset,
-      kwargs={"random_step_size": args.random_step_size,
+      kwargs={"dataset_path": args.dataset_path,
+              "random_step_size": args.random_step_size,
               "switching_factor_freq": args.switching_factor_freq})
