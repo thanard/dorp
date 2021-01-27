@@ -8,13 +8,14 @@ from agent.visual_foresight import CEM_actor
 from train import train
 from planning import *
 from torch.utils.tensorboard import SummaryWriter
+from pathlib import Path
+from transition import Transition
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--env', type=str, default='gridworld')
 parser.add_argument('--seed', type=int, default=0)
 parser.add_argument('--grid_n', type=int, default=16)
 parser.add_argument('--step_size', type=int, default=1)
-# parser.add_argument('--model_dir', type=str, default="")
 
 # Model params:
 parser.add_argument('--n_epochs', type=int, default=1000)
@@ -46,16 +47,19 @@ parser.add_argument('--dataset_path', type=str, default="") # specify path if us
 
 parser.add_argument('--random_step_size', action="store_true")
 parser.add_argument('--switching_factor_freq', type=int, default=1)
+# Planning
+parser.add_argument('--enable_factor', action="store_true")
+parser.add_argument('--enable_full', action="store_true")
+
 args = parser.parse_args()
 
 env = get_env(args.env, args)
 torch.manual_seed(args.seed)
-savepath = setup_savepath(vars(args))
-if not os.path.exists(savepath):
-    os.makedirs(savepath)
+savepath = Path(setup_savepath(vars(args)))
+savepath.mkdir(parents=True, exist_ok=True)
 
 print("savepath ", savepath)
-save_python_cmd(savepath, vars(args), "main.py")
+save_python_cmd(str(savepath), vars(args), "main.py")
 
 writer = SummaryWriter(savepath)
 if args.num_onehots == 0:
@@ -81,16 +85,13 @@ cpc_params = {
 all_params = cpc_params.copy()
 all_params['n_epochs'] = args.n_epochs
 all_params['grid_width'] = args.grid_n
-params_path = os.path.join(savepath, "model-hparams.json")
-with open(params_path, 'w') as fp:
+params_path = savepath / "model-hparams.json"
+with params_path.open('w') as fp:
     json.dump(all_params, fp, indent=2, sort_keys=True)
 
 model = CPC(**cpc_params)
-model_path = os.path.join(savepath, 'cpc-model')
-if os.path.exists(model_path):
-    # args.model_dir = savepath
-# model_path = os.path.join(args.model_dir, "cpc-model")
-# if args.model_dir and os.path.exists(model_path):
+model_path = savepath / 'cpc-model'
+if model_path.exists():
     print("### Model Loaded ###")
     model.load_state_dict(torch.load(model_path))
 else:
@@ -103,11 +104,22 @@ print(model)
 actor = CEM_actor()
 actor.load_cpc_model(args.n_agents, model=model)
 
+graph = Transition(args.enable_factor, args.enable_full)
 
-dataset = None
-if args.dataset_path and os.path.exists(args.dataset_path):
+dataset = {'train': {'act': None, 'obs': None}, 'valid': {'act': None, 'obs': None}}
+datapath = {'train': {'obs': Path(args.dataset_path, 'train_observations.npy'),
+                      'act': Path(args.dataset_path, 'train_actions.npy')},
+            'valid': {'obs': Path(args.dataset_path, 'valid_observations.npy'),
+                      'act': Path(args.dataset_path, 'valid_actions.npy')}}
+if args.dataset_path:
     # precollect dataset of transitions:
-    dataset = np.load(os.path.join(args.dataset_path, 'dataset.npy'))
+    for type in dataset.keys():
+        for key, path in datapath[type].items():
+            if path.exists():
+                print("### Data %s %s Loaded ###" % (type, key))
+                dataset[type][key] = np.load(path)
+            else:
+                print("### Data %s %s Not Exist ###" % (type, key))
 
 train(env,
       actor,
@@ -117,13 +129,14 @@ train(env,
       vis_freq=args.vis_freq,
       plan_freq=args.plan_freq,
       writer=writer,
-      loss_form='ce',
+      loss_form=args.loss,
       lr=args.lr,
       ce_temp=args.ce_temp,
       baseline='',
       n_traj=args.n_traj,
       len_traj=args.len_traj,
       dataset=dataset,
-      kwargs={"dataset_path": args.dataset_path,
-              "random_step_size": args.random_step_size,
+      datapath=datapath,
+      graph=graph,
+      kwargs={"random_step_size": args.random_step_size,
               "switching_factor_freq": args.switching_factor_freq})

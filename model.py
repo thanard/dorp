@@ -126,8 +126,10 @@ class CPC(nn.Module):
         self.separate_W = separate_W
 
         self.k = nn.Parameter(torch.tensor(1.))
-        self.I = torch.eye(z_dim * self.num_onehots).cuda()
-        self.labels = torch.arange(batch_size).long().cuda()
+        self.I = torch.eye(z_dim * self.num_onehots,
+                           device=torch.device('cuda:0'))
+        self.labels = torch.arange(batch_size,
+                                   device=torch.device('cuda:0')).long()
         self.unif_w = nn.Parameter(torch.rand(z_dim * self.num_onehots, z_dim * self.num_onehots))
 
     def encode(self, x, vis=False, continuous=False):
@@ -177,6 +179,7 @@ class CPC(nn.Module):
 
     def compute_logits(self, z_a, z_pos, ce_temp=1.):
         """
+        z_a and z_pos: B x n_agents x z_dim
         Uses logits trick from CURL:
         - compute (B,B) matrix z_a (W z_pos.T)
         - positives are all diagonal elements
@@ -193,19 +196,27 @@ class CPC(nn.Module):
 
 
     def energy(self, state, next_state, sigma=.5):
-        """Energy function based on normalized squared L2 norm."""
-
-        norm = 0.5 / (sigma ** 2)
+        """Energy function based on normalized squared L2 norm.
+        Total the number of bits different from one another.
+        Output lies between 0 to n.
+        """
+        # norm = 0.5 / (sigma ** 2)
         diff = state - next_state
-        return norm * diff.pow(2).sum(2).mean(1)
+        return 0.5 * diff.pow(2).sum(2).sum(1)
 
     def get_loss(self, loss_form, z_a, z_pos, ce_temp=1.):
-        import time
-        start = time.time()
         if loss_form == 'ce':
             CE = nn.CrossEntropyLoss()
             logits = self.compute_logits(z_a, z_pos, ce_temp)
-            return CE(logits, self.labels)
+            return CE(logits, self.labels), None
+        elif loss_form == 'ce-l2':
+            CE = nn.CrossEntropyLoss()
+            logits = self.compute_logits(z_a, z_pos, ce_temp)
+            ce_loss = CE(logits, self.labels)
+            l2_loss = torch.clamp(self.energy(z_a, z_pos),
+                                 min=1).mean()
+            loss_info = {"ce_loss": ce_loss, "l2_loss": l2_loss}
+            return ce_loss + l2_loss, loss_info
         elif loss_form == 'hinge':
             return get_hinge_loss(self, z_a, z_pos)
         else:
@@ -848,7 +859,7 @@ def get_hinge_loss(model, state, next_state, hinge=1):
             state, neg_state)).mean()
 
     loss = pos_loss + neg_loss
-    return loss
+    return loss, {'pos_loss': pos_loss, 'neg_loss': neg_loss}
 
 
 class init_weights_func(object):
@@ -879,13 +890,38 @@ def get_discrete_representation(model, sample_ims, single=False):
         idx += max_batch_size
     return np.concatenate(z_labels)
 
-def get_hamming_dists_samples(model, buffer):
+
+def get_hamming_dists_samples(model, dataloader):
+    '''
+    :param model:
+    :param dataloader:
+    :return: tensor of the hamming distance samples
+    '''
     distances = []
-    for idx in range(len(buffer)):
-        traj = buffer[idx]
-        zs = get_discrete_representation(model, traj)
-        for i in range(len(buffer[idx]) - 1):
-            d = np.sum((zs[i] != zs[i+1]))
-            distances.append(d)
-    distances = np.array(distances)
-    return distances
+    actions = []
+    entity_idx_to_onehot = torch.zeros(model.num_onehots, model.num_onehots,
+                                       device=torch.device('cuda:0'))
+    entity_idx_to_hamming = torch.zeros(model.num_onehots, model.num_onehots + 1,
+                                       device=torch.device('cuda:0'))
+    with torch.set_grad_enabled(False):
+        for idx, (anchor, pos, act) in enumerate(dataloader):
+            o = anchor.cuda(non_blocking=True)
+            o_next = pos.cuda(non_blocking=True)
+            z_cur = model.encode(o, vis=True)
+            z_next = model.encode(o_next, vis=True)
+            z_compare = z_next != z_cur
+            hamming_distance = torch.sum(z_compare, dim=1)
+            distances.append(hamming_distance)
+
+            act_idx, act_value = torch.where(act != 0)
+            assert len(act_idx) == len(o)
+            actions.append(act_value)
+
+            for i in range(model.num_onehots):
+                matching = z_compare[act_value // 2 == i] # matching_size x n_onehots
+                hamming_entity_i = torch.sum(matching, dim=1)
+                for j in range(model.num_onehots + 1):
+                    entity_idx_to_hamming[i, j] += (hamming_entity_i == j).sum()
+                entity_idx_to_onehot[i] += torch.sum(matching, dim=0)
+
+    return torch.cat(distances), torch.cat(actions), entity_idx_to_onehot, entity_idx_to_hamming

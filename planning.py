@@ -3,6 +3,18 @@ from utils.gen_utils import *
 from utils.dataset import *
 from model import get_discrete_representation
 
+def get_factored_edges(model, dataloader):
+    edges = torch.zeros(model.num_onehots, model.z_dim, model.z_dim,
+                         device=torch.device('cuda:0'))
+    for idx, (anchor, pos, act) in enumerate(dataloader):
+        o = anchor.cuda(non_blocking=True)
+        o_next = pos.cuda(non_blocking=True)
+        z_cur = model.encode(o, vis=True)
+        z_next = model.encode(o_next, vis=True)
+        for onehot_idx in range(model.num_onehots):
+            edges[onehot_idx, z_cur[:, onehot_idx], z_next[:, onehot_idx]] += 1
+    return edges
+
 def create_graph_from_sample_transitions_full(model, env, n_traj=50, len_traj=1200, dataset=None):
     '''
     Creates graphs from sampled transition data
@@ -189,7 +201,7 @@ def plan_to_goal_and_execute_factorized(actor, env, onehot_graphs, oracle=False)
                 print("Trying to replan....")
                 # remove edge and replan
                 onehot_graph_copy.remove_edge(prev_node, node)
-                cur_z = get_discrete_representation(actor.cpc_model, env.get_obs(), single=True)[idx]
+                cur_z = get_discrete_representation(actor.cpc_model, env.get_obs().transpose(2, 0, 1), single=True)[idx]
                 prev_node = cur_z
                 onehot_plan = get_plan(onehot_graph_copy, cur_z, zgoal)
             else:
@@ -253,13 +265,13 @@ def get_planning_success_rate(actor,
                               oracle=False,
                               n_traj=50,
                               len_traj=1200,
-                              dataset=None):
+                              dataloader=None):
     successes = 0
     if onehot_groups:
         grouped_graphs = create_graph_from_sample_transitions_grouped_onehots(actor.cpc_model, env, onehot_groups,
                                                                               n_traj=n_traj,
                                                                               len_traj=len_traj,
-                                                                              dataset=dataset)
+                                                                              dataset=dataloader)
         for trial in range(n_trials):
             print("Trial %d of %d" % (trial, n_trials))
             env.reset()
@@ -269,10 +281,11 @@ def get_planning_success_rate(actor,
                 print("total steps: ", total_steps)
                 successes += 1
     elif factorized:
+        # factored_edges = get_factored_edges(actor.cpc_model, dataloader)
         onehot_graphs = create_graph_from_sample_transitions_factorized(actor.cpc_model, env,
                                                                         n_traj=n_traj,
                                                                         len_traj=len_traj,
-                                                                        dataset=dataset)
+                                                                        dataset=dataloader)
         for trial in range(n_trials):
             print("Trial %d of %d" % (trial, n_trials))
             env.reset()
@@ -285,8 +298,7 @@ def get_planning_success_rate(actor,
         full_graph = create_graph_from_sample_transitions_full(actor.cpc_model, env,
                                                                n_traj=n_traj,
                                                                len_traj=len_traj,
-                                                               dataset=dataset
-                                                               )
+                                                               dataset=dataloader)
         for trial in range(n_trials):
             print("Trial %d of %d" % (trial, n_trials))
             env.reset()

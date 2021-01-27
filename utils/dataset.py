@@ -26,10 +26,12 @@ def get_sample_transitions(env, n_traj, len_traj, switching_factor_freq=1):
     :return: buffer of size n_traj x len_traj x C x W x H
     """
     env.reset()
-    buffer = []
+    observations = []
+    actions = []
     for n in range(n_traj):
         env.reset()
         traj_ims = []
+        traj_acts = []
         count = entity_idx = 0
         for t in range(len_traj):
             if switching_factor_freq > 1:
@@ -41,34 +43,40 @@ def get_sample_transitions(env, n_traj, len_traj, switching_factor_freq=1):
             else:
                 action = env.sample_action()
             env.step(action)
+            traj_acts.append(action)
             traj_ims.append(env.get_obs())
-        buffer.append(np.array(traj_ims))
-    buffer = np.array(buffer).transpose((0, 1, 4, 2, 3))
-    return buffer
+        actions.append(np.array(traj_acts))
+        observations.append(np.array(traj_ims))
+    observations = np.array(observations).transpose((0, 1, 4, 2, 3))
+    return observations, actions
 
 
 class TrajectoryDataset(torch.utils.data.Dataset):
-    def __init__(self, data, step_size, use_random_step_size):
+    def __init__(self, data, step_size, use_random_step_size=False):
         'Initialization'
-        self.data = data.astype('float32')/255
+        self.observations = data['obs'].astype('float32') / 255
+        self.actions = data['act']
         self.step_size = step_size
         self.use_random_step_size = use_random_step_size
-        self.n_samples = len(self.data)
-        self.n_trajs = len(self.data[0])
+        self.n_samples = len(self.observations)
+        self.len_traj = len(self.observations[0])
+        assert len(self.actions) == self.n_samples
 
     def __len__(self):
         'Denotes the total number of samples'
-        return self.n_samples * (self.n_trajs - self.step_size)
+        return self.n_samples * (self.len_traj - self.step_size)
 
     def __getitem__(self, index):
         'Generates one sample of data'
         # Select sample
         idx = index % self.n_samples
         t = index // self.n_samples
-        anchor = self.data[idx, t]
+        anchor = self.observations[idx, t]
         if self.use_random_step_size:
             sample_step_size = np.random.choice(self.step_size) + 1
-            positive = self.data[idx, t + sample_step_size]
+            positive = self.observations[idx, t + sample_step_size]
+            action = self.actions[idx, t + 1: t + sample_step_size + 1].sum(0)
         else:
-            positive = self.data[idx, t + self.step_size]
-        return anchor, positive
+            positive = self.observations[idx, t + self.step_size]
+            action = self.actions[idx, t + 1: t + self.step_size + 1].sum(0)
+        return anchor, positive, action

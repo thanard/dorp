@@ -24,41 +24,63 @@ def train(env,
           baseline='',
           n_traj=50,
           len_traj=1000,
-          dataset=None, # None if using online data collection
+          dataset=None,
+          datapath=None,
+          graph=None,
           kwargs=None):
     # Setting up model
     torch.backends.cudnn.benchmark = True
     model = actor.cpc_model
     model.cuda()
     C_solver = optim.Adam(model.parameters(), lr=lr)
-    params = list(model.parameters())
+    # params = list(model.parameters())
 
     # Setting up data
-    data = dataset if type(dataset) is np.ndarray \
-        else get_sample_transitions(env, n_traj, len_traj,
-                                    switching_factor_freq=kwargs['switching_factor_freq'])
-    dataloader = torch.utils.data.DataLoader(
-        TrajectoryDataset(data, step_size, kwargs['random_step_size']),
-        batch_size=model.batch_size,
-        shuffle=True,
-        drop_last=True,
-        # num_workers=0,
-        pin_memory=True
-    )
-    data_size = len(data) * len(data[0])
+    dataloader = {}
+    data_config = {
+        "shuffle": True,
+        "drop_last": True,
+        "pin_memory": True,
+    }
+    valid_data_size = int(1e5)
+    data_n_traj = {
+        "train": n_traj,
+        "valid": valid_data_size // len_traj
+    }
+
+    for key, value in data_n_traj.items():
+        if type(dataset[key]['obs']) != np.ndarray or type(dataset[key]['act']) != np.ndarray:
+            dataset[key]['obs'], dataset[key]['act'] = get_sample_transitions(
+                env,
+                value,
+                len_traj,
+                switching_factor_freq=kwargs['switching_factor_freq'])
+            for key2 in ['obs', 'act']:
+                datapath[key][key2].parent.mkdir(parents=True, exist_ok=True)
+                np.save(datapath[key][key2], dataset[key][key2])
+        if key == "train":
+            dataloader[key] = torch.utils.data.DataLoader(
+                TrajectoryDataset(dataset[key], step_size, kwargs['random_step_size']),
+                batch_size=model.batch_size,
+                **data_config
+            )
+        elif key == "valid":
+            dataloader[key] = torch.utils.data.DataLoader(
+                TrajectoryDataset(dataset[key], 1),
+                batch_size=4096,
+                pin_memory=True
+            )
+
+    data_size = len(dataset['train']['obs']) * len(dataset['train']['obs'][0])
     n_batches = data_size // model.batch_size
-    if not os.path.exists(kwargs['dataset_path']):
-        os.makedirs(kwargs['dataset_path'])
-        np.save(os.path.join(kwargs['dataset_path'], 'dataset.npy'),
-                data)
 
     iter_idx = 0
     start_start = time.time()
-    for epoch in range(1, num_epochs + 1):
+    for epoch in range(num_epochs + 1):
         model.train()
         print("-----Epoch %d------" % epoch)
         # start = time.time()
-        for anchors, positives in dataloader:
+        for anchors, positives, actions in dataloader['train']:
             # print("preprocessing", round(1e3*(time.time() - start)))
             # start = time.time()
             o = anchors.cuda(non_blocking=True)
@@ -72,32 +94,44 @@ def train(env,
             z_pos, attn_maps_o_next = model.encode(o_next)
             # print("compute embeddings", round(1e3*(time.time() - start)))
             # start = time.time()
-            C_loss = model.get_loss(loss_form, z_a, z_pos, ce_temp=ce_temp)
+            C_loss, loss_info = model.get_loss(loss_form, z_a, z_pos, ce_temp=ce_temp)
             # print("compute loss", round(1e3*(time.time() - start)))
             # start = time.time()
 
-            C_loss.backward()
-            C_solver.step()
-            reset_grad(params)
+            # reset_grad(params)
             # print("backward pass", round(1e3*(time.time() - start)))
             # start = time.time()
 
             if iter_idx % 100 == 0:
-                print("fps", iter_idx*model.batch_size/(time.time() - start_start))
-                print("Total time", round(time.time()-start_start))
+                fps = iter_idx*model.batch_size/(time.time() - start_start)
+                total_time = round(time.time()-start_start)
                 log_loss = C_loss.item()
                 print("## Iter %d/%d ##" % (iter_idx, n_batches))
                 print("C_loss: ", log_loss)
+                print("fps", fps)
+                print("Total time", total_time)
                 print()
             iter_idx += 1
 
-        model_fname = os.path.join(output_dir, 'cpc-model')
+            # Checking visualization
+            if epoch == 0:
+                break
 
-        # ### Log visualizations to tensorboard
+            # Update parameters
+            C_loss.backward()
+            C_solver.step()
+            C_solver.zero_grad()
+
+        model_fname = output_dir / 'cpc-model'
+
+        ### Log visualizations to tensorboard
         if writer:
             log(env,
                 writer,
                 log_loss,
+                fps,
+                total_time,
+                loss_info,
                 o,
                 o_next,
                 attn_maps_o,
@@ -106,7 +140,7 @@ def train(env,
                 epoch,
                 vis_freq,
                 model_fname,
-                data)
+                dataloader['valid'])
 
             log_planning_evals(writer,
                                actor,
@@ -114,11 +148,15 @@ def train(env,
                                epoch,
                                plan_freq,
                                n_traj=n_traj,
-                               len_traj=len_traj)
+                               len_traj=len_traj,
+                               dataloader=None) #dataloader['valid'])
 
 def log(env,
         writer,
-        avg_loss,
+        log_loss,
+        fps,
+        total_time,
+        loss_info,
         o,
         o_next,
         attn_maps_o,
@@ -127,16 +165,35 @@ def log(env,
         epoch,
         vis_freq,
         model_fname,
-        buffer):
+        valid_dataloader):
     model.eval()
 
-    writer.add_scalar('Train/training loss', avg_loss, epoch)
+    # Log every epoch (cheap) -- Train constants and Time
+    writer.add_scalar('Train/training loss', log_loss, epoch)
     writer.add_scalar('Train/k', model.k, epoch)
+    if loss_info:
+        for k, v in loss_info.items():
+            writer.add_scalar('Train/%s' % k, v, epoch)
 
+    writer.add_scalar('Time/fps', fps, epoch)
+    writer.add_scalar('Time/total_time', total_time, epoch)
+
+    # Log every vis freq (expensive) -- Hamming Distances
     if epoch % vis_freq == 0:
-        hammings = get_hamming_dists_samples(model, buffer)
+        hammings, act_labels, entity_idx_to_onehot, entity_idx_to_hamming = \
+            get_hamming_dists_samples(model, valid_dataloader)
         for n in range(model.num_onehots+1):
-            writer.add_scalar('Eval_hamming/avg_hamming_%d' % n, np.sum(hammings == n), epoch)
+            writer.add_scalar('Eval/avg_hamming_%d' % n,
+                              (hammings == n).sum().item(), epoch)
+            if env.name != 'gridworld':
+                continue
+            for j in range(model.num_onehots):
+                writer.add_scalar('Eval/entity_to_hamming/idx_%d_to_dist_%d' % (j, n),
+                                  entity_idx_to_hamming[j, n], epoch)
+                if n == model.num_onehots:
+                    continue
+                writer.add_scalar('Eval/entity_to_onehot/idx_%d_to_onehot_%d' % (n, j),
+                                  entity_idx_to_onehot[n, j], epoch)
         cluster_fig = visualize_representations(env, model)
 
         if env.name == 'gridworld':
@@ -172,16 +229,17 @@ def log(env,
                              global_step=epoch)
 
             # Log Activation Map
-            act_imgs = []
-            for onehot_idx in range(model.num_onehots):
-                act_imgs.append(attn_maps_o[0, onehot_idx, None])
-                act_imgs.append(attn_maps_o_next[0, onehot_idx, None])
-            writer.add_image("activation_maps",
-                             make_grid(torch.clamp(
-                                 torch.stack(act_imgs, dim=0), 0, 1), nrow=2, pad_value=0.5),
-                             global_step=epoch)
+            # act_imgs = []
+            # for onehot_idx in range(model.num_onehots):
+            #     act_imgs.append(attn_maps_o[0, onehot_idx, None])
+            #     act_imgs.append(attn_maps_o_next[0, onehot_idx, None])
+            # writer.add_image("activation_maps",
+            #                  make_grid(torch.clamp(
+            #                      torch.stack(act_imgs, dim=0), 0, 1), nrow=2, pad_value=0.5),
+            #                  global_step=epoch)
 
-        # Visualize onehot Distribution
+    # Visualize onehot Distribution
+    if epoch % 200 == 0 and epoch != 0:
         factorization_hists = get_factorization_hist(env, model)
         if factorization_hists:
             hammings_hist, onehots_hist = factorization_hists
@@ -202,7 +260,8 @@ def log_planning_evals(writer,
                        epoch,
                        plan_freq,
                        n_traj,
-                       len_traj):
+                       len_traj,
+                       dataloader):
 
     ### Planning
     actor.cpc_model.eval()
@@ -212,12 +271,13 @@ def log_planning_evals(writer,
             factorized_planning_success_rate = get_planning_success_rate(actor,
                                                                          env,
                                                                          10,
-                                                                         factorized=True,
+                                                                         factorized=False,
                                                                          oracle=True,
                                                                          n_traj=n_traj,
                                                                          len_traj=len_traj,
+                                                                         dataloader=dataloader
                                                                          )
-            writer.add_scalar('Eval/execute_plan_success_rate_factorized_graphs_with_replan',
+            writer.add_scalar('Eval/execute_plan_success_rate_full_graphs_with_replan',
                               factorized_planning_success_rate,
                               epoch)
         elif env.name.startswith('key'):

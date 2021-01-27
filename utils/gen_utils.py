@@ -81,7 +81,8 @@ def setup_savepath(kwargs):
                 "h_distance",
                 "seed",
                 "lr",
-                "circular"
+                "circular",
+                "loss",
                 ]
     if kwargs['encoder'].startswith("attention") or kwargs['encoder'].startswith("cswm"):
         for key in ["activation", "normalization", "scope", "reg"]:

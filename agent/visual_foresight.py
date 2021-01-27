@@ -160,7 +160,7 @@ class CEM_actor(Agent):
             pred_seqs = self.predict_sequence(obs[None]/255, action_seqs)*255
 
         pred_seqs = pred_seqs[:, :len_traj * action_repeat]
-        all_pred_ims = pred_seqs.reshape(n_traj * (len_traj * action_repeat), env.grid_n, env.grid_n, 3)
+        all_pred_ims = pred_seqs.reshape(n_traj * (len_traj * action_repeat), env.grid_n, env.grid_n, 3).transpose(0, 3, 1, 2)
         pred_zs = get_discrete_representation(self.cpc_model, all_pred_ims)
         filters = []
 
