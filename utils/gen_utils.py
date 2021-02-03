@@ -35,7 +35,7 @@ def get_env(env_name, args):
         raise NotImplementedError("Environment not recognized: %s" % env_name)
     return env
 
-def np_to_var(npx, normalize=True):
+def im2cuda(npx, normalize=True):
     var = torch.from_numpy(npx).float()
     var = var.cuda(non_blocking=True)
     if normalize:

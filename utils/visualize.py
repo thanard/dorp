@@ -31,7 +31,7 @@ def visualize_clusters_online_single(env, model):
     cluster_map = []
     for c in cols:
         batch_pos = np.transpose(np.stack((np.repeat(c, len(rows)), rows)), (1,0))
-        im_torch = np_to_var(position_to_image(batch_pos, env.n_agents, env.grid_n)).permute(0,3,1,2)
+        im_torch = im2cuda(position_to_image(batch_pos, env.n_agents, env.grid_n)).permute(0, 3, 1, 2)
         zs = model.encode(im_torch, vis=True).cpu().numpy()
         z_labels = np.sum(np.array([zs[:, i] * model.z_dim ** (num_factors - i - 1) for i in range(num_factors)]),
                           axis=0, dtype=int)
@@ -64,7 +64,7 @@ def visualize_clusters_online_double_fix_one_agent(model, n_agents, grid_n, fixe
             for c in cols:
                 batch_pos = np.transpose(np.stack((np.repeat(c, len(rows)), rows)), (1, 0))
                 batch_pos = np.hstack((batch_pos, fixed_pos)) if fixed_agent == 0 else np.hstack((fixed_pos, batch_pos))
-                im_torch = np_to_var(position_to_image(batch_pos, n_agents, grid_n)).permute(0, 3, 1, 2)
+                im_torch = im2cuda(position_to_image(batch_pos, n_agents, grid_n)).permute(0, 3, 1, 2)
                 zs = model.encode(im_torch, vis=True).cpu().numpy()
                 oh0_map.append(zs[:,0])
                 oh1_map.append(zs[:,1])
@@ -236,7 +236,7 @@ def visualize_node(node, all_labels, dataset, grid_n, savepath):
     node_samples = anchors[idx][:64]
     np.random.shuffle(node_samples)
     node_samples = np.concatenate((node_samples, np.zeros((len(node_samples), grid_n, grid_n, 1))), axis=3)
-    samples_tensor = np_to_var(node_samples).permute(0,3,1,2)
+    samples_tensor = im2cuda(node_samples).permute(0, 3, 1, 2)
     save_image(samples_tensor, os.path.join(savepath, "node_%d_samples.png" % node), padding=16)
 
 def get_2agents_density(node, labels, dataset):
@@ -338,9 +338,9 @@ def visualize_single_agent_and_key(env, model):
             obs = env.get_obs()
             if env.try_place_agent(pos):
                 if model.encoder_form == 'cswm-key-gt':
-                    z = model.encode((np_to_var(obs).unsqueeze(0).permute(0, 3, 1, 2), 1), vis=True)
+                    z = model.encode((im2cuda(obs).unsqueeze(0).permute(0, 3, 1, 2), 1), vis=True)
                 else:
-                    z = model.encode(np_to_var(obs).unsqueeze(0).permute(0, 3, 1, 2), vis=True)
+                    z = model.encode(im2cuda(obs).unsqueeze(0).permute(0, 3, 1, 2), vis=True)
                 z_label = tensor_to_label(z[0], model.num_onehots, model.z_dim)
                 map_key[pos] = z_label
 
@@ -352,9 +352,9 @@ def visualize_single_agent_and_key(env, model):
                 obs = env.get_obs()
                 if env.try_place_agent(pos):
                     if model.encoder_form == 'cswm-key-gt':
-                        z = model.encode((np_to_var(obs).unsqueeze(0).permute(0, 3, 1, 2), 0), vis=True)
+                        z = model.encode((im2cuda(obs).unsqueeze(0).permute(0, 3, 1, 2), 0), vis=True)
                     else:
-                        z = model.encode(np_to_var(obs).unsqueeze(0).permute(0, 3, 1, 2), vis=True)
+                        z = model.encode(im2cuda(obs).unsqueeze(0).permute(0, 3, 1, 2), vis=True)
                     z_label = tensor_to_label(z[0], model.num_onehots, model.z_dim)
                     map_no_key[pos] = z_label
 

@@ -47,36 +47,36 @@ class CPC(nn.Module):
                                 normalization=normalization)
                                 # circular_padding=True,
                                 # downsampling_by=4,
-        elif encoder == 'cswm-scaled-down':
-            conv_seq = ['same']*num_layers
-            conv_seq.append('half')
-            conv_seq.append('half')
-            conv_seq = '-'.join(conv_seq)
-            self.encoder = CSWMCircular(input_dim,
-                                in_channels=in_channels,
-                                num_filters=num_filters,
-                                z_dim=z_dim,
-                                out_onehots=num_onehots,
-                                mode=mode,
-                                temp=temp,
-                                num_layers=num_layers,
-                                normalization=normalization,
-                                conv_seq=conv_seq)
-        elif encoder == 'cswm-scaled-down-first':
-            conv_seq = ['same']*num_layers
-            conv_seq.insert(0, 'half')
-            conv_seq.insert(0, 'half')
-            conv_seq = '-'.join(conv_seq)
-            self.encoder = CSWMCircular(input_dim,
-                                in_channels=in_channels,
-                                num_filters=num_filters,
-                                z_dim=z_dim,
-                                out_onehots=num_onehots,
-                                mode=mode,
-                                temp=temp,
-                                num_layers=num_layers,
-                                normalization=normalization,
-                                conv_seq=conv_seq)
+        # elif encoder == 'cswm-scaled-down':
+        #     conv_seq = ['same']*num_layers
+        #     conv_seq.append('half')
+        #     conv_seq.append('half')
+        #     conv_seq = '-'.join(conv_seq)
+        #     self.encoder = CSWMCircular(input_dim,
+        #                         in_channels=in_channels,
+        #                         num_filters=num_filters,
+        #                         z_dim=z_dim,
+        #                         out_onehots=num_onehots,
+        #                         mode=mode,
+        #                         temp=temp,
+        #                         num_layers=num_layers,
+        #                         normalization=normalization,
+        #                         conv_seq=conv_seq)
+        # elif encoder == 'cswm-scaled-down-first':
+        #     conv_seq = ['same']*num_layers
+        #     conv_seq.insert(0, 'half')
+        #     conv_seq.insert(0, 'half')
+        #     conv_seq = '-'.join(conv_seq)
+        #     self.encoder = CSWMCircular(input_dim,
+        #                         in_channels=in_channels,
+        #                         num_filters=num_filters,
+        #                         z_dim=z_dim,
+        #                         out_onehots=num_onehots,
+        #                         mode=mode,
+        #                         temp=temp,
+        #                         num_layers=num_layers,
+        #                         normalization=normalization,
+        #                         conv_seq=conv_seq)
         elif encoder == 'cswm-gt':
             self.encoder = CSWM(input_dim,
                                 in_channels=in_channels,
@@ -426,146 +426,150 @@ class CSWM(nn.Module):
         x, attn_maps = self.conv_forward(inputs)
         # reg = self.get_attn_map_reg(attn_maps)
         if self.mode == 'continuous':
-            return x, attn_maps
+            x_pred = torch.argmax(x, dim=2)
+            return x, x_pred, attn_maps
         elif self.mode == 'single_encoder':
             x = self.ln(x)
+            x_pred = torch.argmax(x, dim=2)
             x = F.gumbel_softmax(x, dim=2, tau=self.temp, hard=True)
-            return x, attn_maps
+            return x, x_pred, attn_maps
         elif self.mode == 'double_encoder':
             if continuous:
+                x_pred = torch.argmax(x, dim=2)
                 x = F.softmax(x, dim=2)
-                return x, attn_maps
+                return x, x_pred, attn_maps
             else:
                 x = self.ln(x)
+                x_pred = torch.argmax(x, dim=2)
                 x = F.gumbel_softmax(x, dim=2, tau=self.temp, hard=True)
-                return x, attn_maps
+                return x, x_pred, attn_maps
         else:
             raise NotImplementedError
 
 
-class CSWMCircular(nn.Module): # more expressive attention module directly on input
-    def __init__(self, input_dim, out_onehots, in_channels, z_dim, num_filters, mode='single_encoder', temp=1,
-                 num_layers=2, normalization="none", gt_extractor=False, conv_seq='same', circular_padding=False, downsampling_by=1):
-        super(CSWM, self).__init__()
-        self.z_dim = z_dim
-        self.num_filters = num_filters
-        self.temp = temp
-        self.mode = mode
-        self.input_dim = input_dim
-        self.out_onehots = out_onehots
-        self.in_channels = 3
-        self.num_layers = num_layers
-        self.normalization = normalization
-        self.gt_extractor = gt_extractor
-        self.conv_seq = conv_seq.split('-')
-        if len(self.conv_seq) == 1:
-            self.conv_seq = self.conv_seq*(2+num_layers)
-        else:
-            assert len(self.conv_seq) == 2+num_layers
-
-        self.ln = nn.LayerNorm(self.z_dim) # normalize before gumbel softmax
-
-        self.downsampling_by = downsampling_by
-
-        # Object Extractor CNN
-        self.object_extractor = nn.ModuleList()
-        if downsampling_by > 1:
-            self.object_extractor.append(nn.AvgPool2d(
-                downsampling_by, downsampling_by
-            ))
-        self.object_extractor.append(CircularConv2d(self.conv_seq[0], self.in_channels, num_filters, circular_padding))
-        self.object_extractor.append(self.get_norm_layer(normalization))
-        self.object_extractor.append(nn.ReLU())
-        for i in range(self.num_layers):
-            self.object_extractor.append(CircularConv2d(self.conv_seq[i+1], num_filters, num_filters, circular_padding))
-            self.object_extractor.append(self.get_norm_layer(normalization))
-            self.object_extractor.append(nn.ReLU())
-        self.object_extractor.append(CircularConv2d(self.conv_seq[-1], num_filters, self.out_onehots, circular_padding))
-        self.object_extractor.append(nn.Sigmoid())
-
-        # Get h_dim
-        self.hdim = self.get_h_dim()
-
-        # Object Encoder MLP
-        self.num_hiddens = num_filters * 16
-        self.object_encoder = nn.ModuleList([
-            nn.Linear(self.hdim * self.hdim, self.num_hiddens),
-            nn.ReLU(),
-            nn.Linear(self.num_hiddens, self.num_hiddens),
-            nn.LayerNorm(self.num_hiddens),
-            nn.ReLU(),
-            nn.Linear(self.num_hiddens, self.z_dim),
-        ])
-
-    def get_h_dim(self):
-        size = self.input_dim / self.downsampling_by
-        for conv_size in self.conv_seq:
-            if conv_size == 'half':
-                size /= 2
-        return int(size)
-        # return self.object_extractor(torch.zeros((1, self.in_channels, self.input_dim, self.input_dim))).shape[-1]
-
-    def get_norm_layer(self, normalization):
-        if normalization == 'batchnorm':
-            return nn.BatchNorm2d(self.num_filters)
-        elif normalization == 'layernorm':
-            return nn.LayerNorm([self.num_filters, self.hdim, self.hdim])
-        elif normalization == "none":
-            return nn.Identity()
-        else:
-            raise NotImplementedError("normalization type not recognized: %s" % normalization)
-        return
-
-    def expand_input(self, input):
-        return input.repeat_interleave(4, dim=3).repeat_interleave(4, dim=2)
-
-    def conv_forward(self, inputs):
-        batch_size = inputs.size(0)
-        x = inputs * 10
-        # if inputs.size(2) == 16:
-        #     x = self.expand_input(x)
-        if self.gt_extractor:
-            attn_maps = x
-        else:
-
-            for layer in self.object_extractor:
-                x = layer(x)
-            attn_maps = x
-        x = x.view(batch_size, self.out_onehots, -1)
-        for layer in self.object_encoder:
-            x = layer(x)
-        return x, attn_maps
-
-    def vis(self, inputs):
-        x, attn_maps = self.conv_forward(inputs)
-        x = torch.argmax(x, dim=2)
-        return x
-
-    def get_attn_map_reg(self, attn_maps):
-        reg = 0
-        for m_k in attn_maps:
-            reg += torch.mean(torch.min(m_k**2, (1-m_k)**2))
-        return -reg
-
-    def forward(self, inputs, continuous=False):
-        x, attn_maps = self.conv_forward(inputs)
-        reg = self.get_attn_map_reg(attn_maps)
-        if self.mode == 'continuous':
-            return x, reg, attn_maps
-        elif self.mode == 'single_encoder':
-            x = self.ln(x)
-            x = F.gumbel_softmax(x, dim=2, tau=self.temp, hard=True)
-            return x, reg, attn_maps
-        elif self.mode == 'double_encoder':
-            if continuous:
-                x = F.softmax(x, dim=2)
-                return x, reg, attn_maps
-            else:
-                x = self.ln(x)
-                x = F.gumbel_softmax(x, dim=2, tau=self.temp, hard=True)
-                return x, reg, attn_maps
-        else:
-            raise NotImplementedError
+# class CSWMCircular(nn.Module): # more expressive attention module directly on input
+#     def __init__(self, input_dim, out_onehots, in_channels, z_dim, num_filters, mode='single_encoder', temp=1,
+#                  num_layers=2, normalization="none", gt_extractor=False, conv_seq='same', circular_padding=False, downsampling_by=1):
+#         super(CSWM, self).__init__()
+#         self.z_dim = z_dim
+#         self.num_filters = num_filters
+#         self.temp = temp
+#         self.mode = mode
+#         self.input_dim = input_dim
+#         self.out_onehots = out_onehots
+#         self.in_channels = 3
+#         self.num_layers = num_layers
+#         self.normalization = normalization
+#         self.gt_extractor = gt_extractor
+#         self.conv_seq = conv_seq.split('-')
+#         if len(self.conv_seq) == 1:
+#             self.conv_seq = self.conv_seq*(2+num_layers)
+#         else:
+#             assert len(self.conv_seq) == 2+num_layers
+#
+#         self.ln = nn.LayerNorm(self.z_dim) # normalize before gumbel softmax
+#
+#         self.downsampling_by = downsampling_by
+#
+#         # Object Extractor CNN
+#         self.object_extractor = nn.ModuleList()
+#         if downsampling_by > 1:
+#             self.object_extractor.append(nn.AvgPool2d(
+#                 downsampling_by, downsampling_by
+#             ))
+#         self.object_extractor.append(CircularConv2d(self.conv_seq[0], self.in_channels, num_filters, circular_padding))
+#         self.object_extractor.append(self.get_norm_layer(normalization))
+#         self.object_extractor.append(nn.ReLU())
+#         for i in range(self.num_layers):
+#             self.object_extractor.append(CircularConv2d(self.conv_seq[i+1], num_filters, num_filters, circular_padding))
+#             self.object_extractor.append(self.get_norm_layer(normalization))
+#             self.object_extractor.append(nn.ReLU())
+#         self.object_extractor.append(CircularConv2d(self.conv_seq[-1], num_filters, self.out_onehots, circular_padding))
+#         self.object_extractor.append(nn.Sigmoid())
+#
+#         # Get h_dim
+#         self.hdim = self.get_h_dim()
+#
+#         # Object Encoder MLP
+#         self.num_hiddens = num_filters * 16
+#         self.object_encoder = nn.ModuleList([
+#             nn.Linear(self.hdim * self.hdim, self.num_hiddens),
+#             nn.ReLU(),
+#             nn.Linear(self.num_hiddens, self.num_hiddens),
+#             nn.LayerNorm(self.num_hiddens),
+#             nn.ReLU(),
+#             nn.Linear(self.num_hiddens, self.z_dim),
+#         ])
+#
+#     def get_h_dim(self):
+#         size = self.input_dim / self.downsampling_by
+#         for conv_size in self.conv_seq:
+#             if conv_size == 'half':
+#                 size /= 2
+#         return int(size)
+#         # return self.object_extractor(torch.zeros((1, self.in_channels, self.input_dim, self.input_dim))).shape[-1]
+#
+#     def get_norm_layer(self, normalization):
+#         if normalization == 'batchnorm':
+#             return nn.BatchNorm2d(self.num_filters)
+#         elif normalization == 'layernorm':
+#             return nn.LayerNorm([self.num_filters, self.hdim, self.hdim])
+#         elif normalization == "none":
+#             return nn.Identity()
+#         else:
+#             raise NotImplementedError("normalization type not recognized: %s" % normalization)
+#         return
+#
+#     def expand_input(self, input):
+#         return input.repeat_interleave(4, dim=3).repeat_interleave(4, dim=2)
+#
+#     def conv_forward(self, inputs):
+#         batch_size = inputs.size(0)
+#         x = inputs * 10
+#         # if inputs.size(2) == 16:
+#         #     x = self.expand_input(x)
+#         if self.gt_extractor:
+#             attn_maps = x
+#         else:
+#
+#             for layer in self.object_extractor:
+#                 x = layer(x)
+#             attn_maps = x
+#         x = x.view(batch_size, self.out_onehots, -1)
+#         for layer in self.object_encoder:
+#             x = layer(x)
+#         return x, attn_maps
+#
+#     def vis(self, inputs):
+#         x, attn_maps = self.conv_forward(inputs)
+#         x = torch.argmax(x, dim=2)
+#         return x
+#
+#     def get_attn_map_reg(self, attn_maps):
+#         reg = 0
+#         for m_k in attn_maps:
+#             reg += torch.mean(torch.min(m_k**2, (1-m_k)**2))
+#         return -reg
+#
+#     def forward(self, inputs, continuous=False):
+#         x, attn_maps = self.conv_forward(inputs)
+#         reg = self.get_attn_map_reg(attn_maps)
+#         if self.mode == 'continuous':
+#             return x, reg, attn_maps
+#         elif self.mode == 'single_encoder':
+#             x = self.ln(x)
+#             x = F.gumbel_softmax(x, dim=2, tau=self.temp, hard=True)
+#             return x, reg, attn_maps
+#         elif self.mode == 'double_encoder':
+#             if continuous:
+#                 x = F.softmax(x, dim=2)
+#                 return x, reg, attn_maps
+#             else:
+#                 x = self.ln(x)
+#                 x = F.gumbel_softmax(x, dim=2, tau=self.temp, hard=True)
+#                 return x, reg, attn_maps
+#         else:
+#             raise NotImplementedError
 
 class CSWMKey(nn.Module):
     def __init__(self, input_dim, in_channels, z_dim, num_filters=32, out_agent_onehots=1, out_key_onehots=1,  mode='single_encoder', temp=1,
@@ -870,25 +874,26 @@ class init_weights_func(object):
         if type(m) == nn.Linear or type(m) == nn.Conv2d:
             torch.nn.init.xavier_uniform_(m.weight, self.scale_factor)
 
-def get_discrete_representation(model, sample_ims, single=False):
+def get_discrete_representation(model, sample_ims, max_batch_size = 4096, single=False):
     '''
     Computes and returns forward pass of CPC model for a batch of processed images
     :param model: CPC model
     :param sample_ims: batch of input images (any length)
     :return: np array of z outputs [sample_size, model.z_dim]
     '''
-    if single:
-        return model.encode(np_to_var(sample_ims).unsqueeze(0), vis=True).squeeze(
-            0).cpu().numpy()
-    max_batch_size = 4096
-    idx = 0
-    z_labels = []
-    while idx < len(sample_ims):
-        zs = model.encode(np_to_var(sample_ims[idx:idx + max_batch_size]),
-                          vis=True).cpu().numpy()
-        z_labels.append(zs)
-        idx += max_batch_size
-    return np.concatenate(z_labels)
+    with torch.set_grad_enabled(False):
+        if single:
+            return model.encode(im2cuda(sample_ims).unsqueeze(0), vis=True).squeeze(
+                0).cpu().numpy()
+        idx = 0
+        z_labels = []
+        while idx < len(sample_ims):
+            batch_size = min(max_batch_size, len(sample_ims) - idx)
+            zs = model.encode(im2cuda(sample_ims[idx:idx + batch_size]),
+                              vis=True).cpu().numpy()
+            z_labels.append(zs)
+            idx += max_batch_size
+        return np.concatenate(z_labels)
 
 
 def get_hamming_dists_samples(model, dataloader):

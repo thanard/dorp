@@ -104,7 +104,7 @@ print(model)
 actor = CEM_actor()
 actor.load_cpc_model(args.n_agents, model=model)
 
-graph = Transition(args.enable_factor, args.enable_full)
+graph = Transition(args.enable_factor, args.enable_full, args.z_dim, args.num_onehots)
 
 dataset = {'train': {'act': None, 'obs': None}, 'valid': {'act': None, 'obs': None}}
 datapath = {'train': {'obs': Path(args.dataset_path, 'train_observations.npy'),

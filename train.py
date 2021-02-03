@@ -78,6 +78,7 @@ def train(env,
     start_start = time.time()
     for epoch in range(num_epochs + 1):
         model.train()
+        graph.reset()
         print("-----Epoch %d------" % epoch)
         # start = time.time()
         for anchors, positives, actions in dataloader['train']:
@@ -90,17 +91,18 @@ def train(env,
             # print("np_2_var_2", round(1e3*(time.time() - start)))
             # start = time.time()
             ### Compute loss
-            z_a, attn_maps_o = model.encode(o, continuous=True)
-            z_pos, attn_maps_o_next = model.encode(o_next)
+            z_cur, node_cur, attn_maps_o = model.encode(o, continuous=True)
+            z_next, node_next, attn_maps_o_next = model.encode(o_next)
             # print("compute embeddings", round(1e3*(time.time() - start)))
             # start = time.time()
-            C_loss, loss_info = model.get_loss(loss_form, z_a, z_pos, ce_temp=ce_temp)
+            C_loss, loss_info = model.get_loss(loss_form, z_cur, z_next, ce_temp=ce_temp)
             # print("compute loss", round(1e3*(time.time() - start)))
             # start = time.time()
 
-            # reset_grad(params)
-            # print("backward pass", round(1e3*(time.time() - start)))
-            # start = time.time()
+            # Not perfect as the representation is constantly changing.
+            import pdb
+            pdb.set_trace()
+            graph.add(node_cur, node_next)
 
             if iter_idx % 100 == 0:
                 fps = iter_idx*model.batch_size/(time.time() - start_start)
@@ -145,11 +147,9 @@ def train(env,
             log_planning_evals(writer,
                                actor,
                                env,
+                               graph,
                                epoch,
-                               plan_freq,
-                               n_traj=n_traj,
-                               len_traj=len_traj,
-                               dataloader=None) #dataloader['valid'])
+                               plan_freq)
 
 def log(env,
         writer,
@@ -257,39 +257,29 @@ def log(env,
 def log_planning_evals(writer,
                        actor,
                        env,
+                       graph,
                        epoch,
-                       plan_freq,
-                       n_traj,
-                       len_traj,
-                       dataloader):
+                       plan_freq):
 
     ### Planning
     actor.cpc_model.eval()
     if writer and epoch % plan_freq == 0:
         # currently uses oracle dynamics for evaluation
-        if env.name == 'gridworld':
-            factorized_planning_success_rate = get_planning_success_rate(actor,
-                                                                         env,
-                                                                         10,
-                                                                         factorized=False,
-                                                                         oracle=True,
-                                                                         n_traj=n_traj,
-                                                                         len_traj=len_traj,
-                                                                         dataloader=dataloader
-                                                                         )
-            writer.add_scalar('Eval/execute_plan_success_rate_full_graphs_with_replan',
-                              factorized_planning_success_rate,
+        success_rates = get_planning_success_rate(actor,
+                                                  env,
+                                                  graph,
+                                                  n_trials=10,
+                                                  oracle=True)
+        for k, sr in success_rates.items():
+            writer.add_scalar('Eval/success_rate_%s_replan_oracle' % k,
+                              sr,
                               epoch)
-        elif env.name.startswith('key'):
-            factorized_planning_success_rate = get_planning_success_rate(actor,
-                                                                         env,
-                                                                         10,
-                                                                         factorized=False,
-                                                                         oracle=True,
-                                                                         n_traj=n_traj,
-                                                                         len_traj=len_traj,
-                                                                         )
-            writer.add_scalar('Eval/execute_plan_success_rate_full_graph_with_replan',
-                              factorized_planning_success_rate,
-                              epoch)
+        # elif env.name.startswith('key'):
+        #     factorized_planning_success_rate = get_planning_success_rate(actor,
+        #                                                                  env,
+        #                                                                  n_trials=10,
+        #                                                                  oracle=True)
+        #     writer.add_scalar('Eval/execute_plan_success_rate_full_graph_with_replan',
+        #                       factorized_planning_success_rate,
+        #                       epoch)
 
