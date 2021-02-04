@@ -1,0 +1,14 @@
+{
+    "sdim": 1,
+    "adim": 4,
+    "env": "pushenv",
+    "actions_shifted": true,
+    "num_epochs": null,
+    "train_split": [
+        0.9,
+        0.05,
+        0.05
+    ],
+    "use_states": false,
+    "T": 15
+}

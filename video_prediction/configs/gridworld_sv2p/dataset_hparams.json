@@ -1,0 +1,17 @@
+{
+    "sdim": 1,
+    "adim": 5,
+    "input_dims": [32, 32],
+    "grid_n": 16,
+    "env": "gridworld",
+    "n_agents": 5,
+    "actions_shifted": false,
+    "num_epochs": null,
+    "train_split": [
+        0.9,
+        0.05,
+        0.05
+    ],
+    "use_states": false,
+    "T": 20
+}

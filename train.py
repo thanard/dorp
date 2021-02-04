@@ -127,29 +127,29 @@ def train(env,
         model_fname = output_dir / 'cpc-model'
 
         ### Log visualizations to tensorboard
-        if writer:
-            log(env,
-                writer,
-                log_loss,
-                fps,
-                total_time,
-                loss_info,
-                o,
-                o_next,
-                attn_maps_o,
-                attn_maps_o_next,
-                model,
-                epoch,
-                vis_freq,
-                model_fname,
-                dataloader['valid'])
-
-            log_planning_evals(writer,
-                               actor,
-                               env,
-                               graph,
-                               epoch,
-                               plan_freq)
+        # if writer:
+        #     log(env,
+        #         writer,
+        #         log_loss,
+        #         fps,
+        #         total_time,
+        #         loss_info,
+        #         o,
+        #         o_next,
+        #         attn_maps_o,
+        #         attn_maps_o_next,
+        #         model,
+        #         epoch,
+        #         vis_freq,
+        #         model_fname,
+        #         dataloader['valid'])
+        #
+        #     log_planning_evals(writer,
+        #                        actor,
+        #                        env,
+        #                        graph,
+        #                        epoch,
+        #                        plan_freq)
 
 def log(env,
         writer,

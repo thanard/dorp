@@ -118,6 +118,10 @@ if args.dataset_path:
             if path.exists():
                 print("### Data %s %s Loaded ###" % (type, key))
                 dataset[type][key] = np.load(path)
+                if dataset[type][key].dtype == np.uint16:
+                    print("Updating the types")
+                    dataset[type][key] = dataset[type][key].astype(np.int64)
+                    np.save(path, dataset[type][key])
             else:
                 print("### Data %s %s Not Exist ###" % (type, key))
 

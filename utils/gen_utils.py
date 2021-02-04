@@ -5,7 +5,7 @@ import os
 from envs.gridworld import GridWorld
 from envs.key_door import *
 from envs.maze import Maze
-
+from envs.push_env import PushEnv
 
 def get_env(env_name, args):
     if env_name == "gridworld":
@@ -31,6 +31,8 @@ def get_env(env_name, args):
         env = KeyCorridorSequential(1)
     elif env_name == 'maze':
         env = Maze()
+    elif env_name == 'pushenv':
+        env = PushEnv()
     else:
         raise NotImplementedError("Environment not recognized: %s" % env_name)
     return env
