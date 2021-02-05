@@ -32,7 +32,7 @@ def get_env(env_name, args):
     elif env_name == 'maze':
         env = Maze()
     elif env_name == 'pushenv':
-        env = PushEnv()
+        env = PushEnv(args.n_agents)
     else:
         raise NotImplementedError("Environment not recognized: %s" % env_name)
     return env

@@ -1,3 +1,7 @@
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
 class FactoredEncoder(nn.Module):
     def __init__(self, input_dim, out_onehots=2, in_channels=2, z_dim=8, num_filters=32, mode='single_encoder', temp=1):
         super(FactoredEncoder, self).__init__()

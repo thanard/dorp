@@ -5,7 +5,6 @@ from model import get_discrete_representation
 from utils.gen_utils import *
 from video_prediction.setup_predictor import setup_predictor
 from video_prediction.vpred_model_interface import VPred_Model_Interface
-from video_prediction.datasets.numpy_datasets.grid_helpers import to_rgb_np
 from model import CPC
 import json
 

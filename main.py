@@ -72,7 +72,7 @@ cpc_params = {
               'batch_size': args.batch_size,
               'in_channels': 3, # inputs are rgb
               'mode': mode,
-              'input_dim': env.grid_n,
+              'input_dim': args.grid_n,
               'W_form': args.W,
               'num_filters': args.num_filters,
               'num_onehots': args.num_onehots,
@@ -80,6 +80,8 @@ cpc_params = {
               'separate_W': args.separate_W,
               'num_layers': args.num_layers,
               'normalization': args.normalization,
+              'loss_form': args.loss,
+              'ce_temp': args.ce_temp
               }
 
 all_params = cpc_params.copy()
@@ -111,6 +113,19 @@ datapath = {'train': {'obs': Path(args.dataset_path, 'train_observations.npy'),
                       'act': Path(args.dataset_path, 'train_actions.npy')},
             'valid': {'obs': Path(args.dataset_path, 'valid_observations.npy'),
                       'act': Path(args.dataset_path, 'valid_actions.npy')}}
+
+def format_dataset(dataset, type, key, envname):
+    # Image Type (normalization is done in dataloader)
+    if dataset[type][key].dtype == np.uint16:
+        print("Updating the types")
+        dataset[type][key] = dataset[type][key].astype(np.int64)
+        np.save(path, dataset[type][key])
+    # Image Shape
+    if key == 'obs' and dataset[type][key].shape[2] != 3 and dataset[type][key].shape[4] == 3:
+        dataset[type][key] = np.transpose(dataset[type][key], (0, 1, 4, 2, 3))
+    # Action
+    # if envname == 'pushenv' and key == 'acts':
+
 if args.dataset_path:
     # precollect dataset of transitions:
     for type in dataset.keys():
@@ -118,10 +133,7 @@ if args.dataset_path:
             if path.exists():
                 print("### Data %s %s Loaded ###" % (type, key))
                 dataset[type][key] = np.load(path)
-                if dataset[type][key].dtype == np.uint16:
-                    print("Updating the types")
-                    dataset[type][key] = dataset[type][key].astype(np.int64)
-                    np.save(path, dataset[type][key])
+                format_dataset(dataset, type, key, args.env)
             else:
                 print("### Data %s %s Not Exist ###" % (type, key))
 
@@ -133,9 +145,7 @@ train(env,
       vis_freq=args.vis_freq,
       plan_freq=args.plan_freq,
       writer=writer,
-      loss_form=args.loss,
       lr=args.lr,
-      ce_temp=args.ce_temp,
       baseline='',
       n_traj=args.n_traj,
       len_traj=args.len_traj,

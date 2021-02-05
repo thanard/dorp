@@ -1,14 +1,34 @@
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
 
+class Conv2d(nn.Module):
+    def __init__(self, size, in_channels, out_channels):
+        super(Conv2d, self).__init__()
+        if size == 'same':
+            self.layer = nn.Conv2d(in_channels=in_channels,
+                  out_channels=out_channels,
+                  kernel_size=3,
+                  padding=1)
+
+        elif size == 'half':
+            self.layer =  nn.Conv2d(in_channels=in_channels,
+                          out_channels=out_channels,
+                          kernel_size=4,
+                          stride=2,
+                          padding=1)
+
+    def forward(self, x):
+        return self.layer(x)
 
 class CSWM(nn.Module):
     def __init__(self, input_dim, out_onehots, in_channels, z_dim, num_filters, mode='single_encoder', temp=1,
-                 num_layers=3, normalization="none", gt_extractor=False):
+                 num_layers=3, normalization="none", gt_extractor=False, conv_seq='same', downsampling_by=1, upsampling_by=1, resnet_stack_size=0):
         super(CSWM, self).__init__()
         self.z_dim = z_dim
         self.num_filters = num_filters
         self.temp = temp
         self.mode = mode
-        self.input_dim = input_dim
         self.hdim = input_dim
         self.out_onehots = out_onehots
         self.in_channels = in_channels
@@ -25,14 +45,22 @@ class CSWM(nn.Module):
                                              kernel_size=3,
                                              padding=1))
         self.object_extractor.append(self.get_norm_layer(normalization))
-        self.object_extractor.append(nn.ReLU())
         for i in range(self.num_layers):
+            self.object_extractor.append(nn.ReLU())
             self.object_extractor.append(nn.Conv2d(in_channels=num_filters,
                                                  out_channels=num_filters,
                                                  kernel_size=3,
                                                  padding=1))
             self.object_extractor.append(self.get_norm_layer(normalization))
-            self.object_extractor.append(nn.ReLU())
+        # if resnet_stack_size > 0:
+        #     from grid_env.residual import  ResidualStack
+        #     self.layer = ResidualStack(
+        #         in_dim=num_filters,
+        #         res_h_dim=num_filters,
+        #         h_dim=num_filters,
+        #         n_res_layers=resnet_stack_size
+        #     )
+        self.object_extractor.append(nn.ReLU())
         self.object_extractor.append(nn.Conv2d(in_channels=num_filters,
                                              out_channels=self.out_onehots,
                                              kernel_size=3,
@@ -74,10 +102,10 @@ class CSWM(nn.Module):
             x = layer(x)
         return x, attn_maps
 
-    def vis(self, inputs):
-        x, attn_maps = self.conv_forward(inputs)
-        x = torch.argmax(x, dim=2)
-        return x
+    # def vis(self, inputs):
+    #     x, attn_maps = self.conv_forward(inputs)
+    #     x = torch.argmax(x, dim=2)
+    #     return x
 
     def get_attn_map_reg(self, attn_maps):
         reg = 0

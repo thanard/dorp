@@ -18,9 +18,7 @@ def train(env,
           vis_freq=10,
           plan_freq=50,
           writer=None,
-          loss_form='ce',
           lr=1e-3,
-          ce_temp=1.0,
           baseline='',
           n_traj=50,
           len_traj=1000,
@@ -95,13 +93,11 @@ def train(env,
             z_next, node_next, attn_maps_o_next = model.encode(o_next)
             # print("compute embeddings", round(1e3*(time.time() - start)))
             # start = time.time()
-            C_loss, loss_info = model.get_loss(loss_form, z_cur, z_next, ce_temp=ce_temp)
+            C_loss, loss_info = model.get_loss(z_cur, z_next)
             # print("compute loss", round(1e3*(time.time() - start)))
             # start = time.time()
 
             # Not perfect as the representation is constantly changing.
-            import pdb
-            pdb.set_trace()
             graph.add(node_cur, node_next)
 
             if iter_idx % 100 == 0:
@@ -127,23 +123,23 @@ def train(env,
         model_fname = output_dir / 'cpc-model'
 
         ### Log visualizations to tensorboard
-        # if writer:
-        #     log(env,
-        #         writer,
-        #         log_loss,
-        #         fps,
-        #         total_time,
-        #         loss_info,
-        #         o,
-        #         o_next,
-        #         attn_maps_o,
-        #         attn_maps_o_next,
-        #         model,
-        #         epoch,
-        #         vis_freq,
-        #         model_fname,
-        #         dataloader['valid'])
-        #
+        if writer:
+            log(env,
+                writer,
+                log_loss,
+                fps,
+                total_time,
+                loss_info,
+                o,
+                o_next,
+                attn_maps_o,
+                attn_maps_o_next,
+                model,
+                epoch,
+                vis_freq,
+                model_fname,
+                dataloader['valid'])
+
         #     log_planning_evals(writer,
         #                        actor,
         #                        env,
@@ -180,13 +176,12 @@ def log(env,
 
     # Log every vis freq (expensive) -- Hamming Distances
     if epoch % vis_freq == 0:
-        hammings, act_labels, entity_idx_to_onehot, entity_idx_to_hamming = \
-            get_hamming_dists_samples(model, valid_dataloader)
+        hammings, entity_idx_to_onehot, entity_idx_to_hamming, valid_loss = \
+            get_hamming_dists_samples(model, valid_dataloader, env.name)
         for n in range(model.num_onehots+1):
             writer.add_scalar('Eval/avg_hamming_%d' % n,
                               (hammings == n).sum().item(), epoch)
-            if env.name != 'gridworld':
-                continue
+            writer.add_scalar('Valid/validation loss', valid_loss, epoch)
             for j in range(model.num_onehots):
                 writer.add_scalar('Eval/entity_to_hamming/idx_%d_to_dist_%d' % (j, n),
                                   entity_idx_to_hamming[j, n], epoch)
@@ -239,17 +234,17 @@ def log(env,
             #                  global_step=epoch)
 
     # Visualize onehot Distribution
-    if epoch % 200 == 0 and epoch != 0:
-        factorization_hists = get_factorization_hist(env, model)
-        if factorization_hists:
-            hammings_hist, onehots_hist = factorization_hists
-            writer.add_figure('hamming distance distribution fixing each agent',
-                              hammings_hist,
-                              global_step=epoch)
-            writer.add_figure('which onehot changes fixing each independent entity',
-                              onehots_hist,
-                              global_step=epoch)
-    if epoch > 10:
+    # if epoch % 200 == 0 and epoch != 0:
+    #     factorization_hists = get_factorization_hist(env, model)
+    #     if factorization_hists:
+    #         hammings_hist, onehots_hist = factorization_hists
+    #         writer.add_figure('hamming distance distribution fixing each agent',
+    #                           hammings_hist,
+    #                           global_step=epoch)
+    #         writer.add_figure('which onehot changes fixing each independent entity',
+    #                           onehots_hist,
+    #                           global_step=epoch)
+    if epoch % 10 == 0:
         torch.save(model.state_dict(), model_fname)
 
     plt.close('all')

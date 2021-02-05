@@ -32,15 +32,17 @@ def transform_act(actions):
     return np.stack(output, axis=-1)
 
 def transform_obs(obs):
-    output = np.zeros((obs.shape[0],
-                       obs.shape[1],
-                       64,
-                       64,
-                       3))
-    for i in range(obs.shape[0]):
-        for t in range(obs.shape[1]):
-            output[i, t] = cv2.resize(obs[i, t], dsize=(64, 64), interpolation=cv2.INTER_AREA)
-    return output/255.
+    if obs.shape[2] !=64:
+        output = np.zeros((obs.shape[0],
+                           obs.shape[1],
+                           64,
+                           64,
+                           3))
+        for i in range(obs.shape[0]):
+            for t in range(obs.shape[1]):
+                output[i, t] = cv2.resize(obs[i, t], dsize=(64, 64), interpolation=cv2.INTER_AREA)
+        return output/255.
+    return obs/255.
 
 class NPYDatasetLoad:
     MODES = ['train', 'val', 'test']
