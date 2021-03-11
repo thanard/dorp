@@ -110,6 +110,41 @@ def get_plan(graph, start, goal):
         print("shortest path failed: ", e)
         return None
 
+def plan_and_execute_full_graph(actor, env, graph, n_trials, oracle=False):
+    model = actor.cpc_model
+    import time
+    start = time.time()
+    envs = [copy.deepcopy(env) for i in range(n_trials)]
+    start_ims = []
+    goal_ims = []
+    del env
+    for trial in range(n_trials):
+        env = envs[trial]
+        env.seed(trial)
+        env.reset()
+        start_ims.append(env.get_obs().transpose(2, 0, 1))
+        goal_ims.append(env.goal_im.transpose(2, 0, 1))
+    print("Data collection: ", time.time() - start)
+    start = time.time()
+
+    all_ims = np.concatenate([start_ims, goal_ims])
+    zs_np = get_discrete_representation(model,
+                                        all_ims)
+    import pdb
+    pdb.set_trace()
+    nodes = np.ravel_multi_index
+    # zgoal = tensor_to_label(get_discrete_representation(model,
+    #                                                     goal_ims,
+    #                                                     single=True),
+    #                         model.num_onehots,
+    #                         model.z_dim)
+    print("Embedding: ", time.time() - start)
+    start = time.time()
+
+    plan = graph.get_plan(zstart, zgoal)
+    print("Planning: ", time.time() - start)
+    start = time.time()
+
 def plan_to_goal_and_execute_full_graph(actor, env, full_graph, oracle=False):
     model = actor.cpc_model
     full_graph_copy = full_graph.copy()
@@ -252,81 +287,24 @@ def get_planning_success_rate(actor,
                               graph,
                               n_trials,
                               onehot_groups=None,
+                              factorized=False,
                               oracle=False):
-    model = actor.cpc_model
-    import time
-    start = time.time()
-    envs = [copy.deepcopy(env) for i in range(n_trials)]
-    start_ims = []
-    goal_ims = []
-    del env
-    for trial in range(n_trials):
-        env = envs[trial]
-        env.seed(trial)
-        env.reset()
-        start_ims.append(env.get_obs().transpose(2, 0, 1))
-        goal_ims.append(env.goal_im.transpose(2, 0, 1))
-    print("Data collection: ", time.time() - start)
-    start = time.time()
-
-    all_ims = np.concatenate([start_ims, goal_ims])
-    zs_np = get_discrete_representation(model,
-                                        all_ims)
-    import pdb
-    pdb.set_trace()
-    nodes = np.ravel_multi_index
-        # zgoal = tensor_to_label(get_discrete_representation(model,
-        #                                                     goal_ims,
-        #                                                     single=True),
-        #                         model.num_onehots,
-        #                         model.z_dim)
-    print("Embedding: ", time.time() - start)
-    start = time.time()
-
-    plan = graph.get_plan(zstart, zgoal)
-    print("Planning: ", time.time() - start)
-    start = time.time()
-
-
-        # if plan:
-        #     prev_node = plan[0]
-        #     node = plan[0]
-        #     reached_node = True
-        #
-        # while plan:
-        #     print("plan from %d to %d: " % (zstart, zgoal), plan)
-        #     for node in plan[1:]:
-        #         reached_node, steps = actor.act(env, node, oracle=oracle)
-        #         total_steps += steps
-        #         if not reached_node:
-        #             break
-        #         prev_node = node
-        #         print("reached node", node)
-        #     if not reached_node:
-        #         # remove edge and replan
-        #         print("Couldn't reach node %d" % node)
-        #         print("Trying to replan....")
-        #         graph.remove(prev_node, node)
-        #         cur_z = tensor_to_label(get_discrete_representation(actor.cpc_model, env.get_obs(), single=True),
-        #                                 model.num_onehots,
-        #                                 model.z_dim)
-        #         prev_node = cur_z
-        #         plan = get_plan(graph, cur_z, zgoal)
-        #     else:
-        #         print("Trying to reach goal..")
-        #         reached_goal, steps = actor.move_to_goal(env, oracle=oracle)
-        #         total_steps = total_steps + steps if reached_goal else 0
-        #         if reached_goal:
-        #             return True, total_steps
-        #         elif len(plan) > 1:
-        #             print("Failed to reach goal, trying to replan...")
-        #             # remove edge from second-last node to goal, replan from second-last node
-        #             graph.remove(plan[-2], zgoal)
-        #             prev_node = plan[-2]
-        #             plan = get_plan(graph, plan[-2], zgoal)
-        #         else:
-        #             break
-        # print("plan failed\n")
-
-
-
+    if onehot_groups:
+        success_rate = 0
+        pass
+    elif factorized:
+        success_rate = 0
+        pass
+    else:
+        successes = 0
+        for trial in range(n_trials):
+            print("Trial %d of %d" % (trial, n_trials))
+            env.reset()
+            success, total_steps = plan_to_goal_and_execute_full_graph(actor, env, graph, oracle=oracle)
+            if success:
+                print("success")
+                print("total steps: ", total_steps)
+                successes += 1
+        success_rate = float(successes) / n_trials
+        # success_rate = plan_and_execute_full_graph(actor, env, graph, n_trials, oracle)
+    return success_rate
