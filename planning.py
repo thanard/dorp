@@ -5,39 +5,39 @@ from utils.dataset import *
 from model import get_discrete_representation
 
 
-# def create_graph_from_sample_transitions_full(model, env, n_traj=50, len_traj=1200, dataset=None):
-#     '''
-#     Creates graphs from sampled transition data
-#     :param model: CPC model
-#     :param grid_n: grid width
-#     :param n_agents: # agents
-#     :param n_batches: # batches of transtion data to process
-#     :param batch_size: size of each batch of transition data
-#     :return: tuple (explicit nx graph, list of onehot nx graphs)
-#     '''
-#     print("creating graph....")
-#     graph = nx.Graph()
-#     if dataset:
-#         data = dataset
-#         n_traj = len(dataset)
-#         len_traj = len(dataset[0])
-#     else:
-#         data = get_sample_transitions(env, n_traj, len_traj)
-#     for idx in range(n_traj):
-#         traj = data[idx]
-#         zs = get_discrete_representation(model, traj)
-#         for i in range(len_traj-1):
-#             z_cur = tensor_to_label(zs[i], model.num_onehots, model.z_dim)
-#             z_next = tensor_to_label(zs[i + 1], model.num_onehots, model.z_dim)
-#             if not graph.has_node(z_cur):
-#                 graph.add_node(z_cur)
-#             if z_next != z_cur and not graph.has_edge(z_cur, z_next):
-#                 graph.add_edge(z_cur, z_next)
-#
-#     print("number of nodes in full explicit graph", len(graph))
-#     print("nodes", graph.nodes())
-#     print("edges", graph.edges())
-#     return graph
+def create_graph_from_sample_transitions_full(model, env, n_traj=50, len_traj=1200, dataset=None):
+    '''
+    Creates graphs from sampled transition data
+    :param model: CPC model
+    :param grid_n: grid width
+    :param n_agents: # agents
+    :param n_batches: # batches of transtion data to process
+    :param batch_size: size of each batch of transition data
+    :return: tuple (explicit nx graph, list of onehot nx graphs)
+    '''
+    print("creating graph....")
+    graph = nx.Graph()
+    if dataset:
+        data = dataset
+        n_traj = len(dataset)
+        len_traj = len(dataset[0])
+    else:
+        data = get_sample_transitions(env, n_traj, len_traj)
+    for idx in range(n_traj):
+        traj = data[idx]
+        zs = get_discrete_representation(model, traj)
+        for i in range(len_traj-1):
+            z_cur = tensor_to_label(zs[i], model.num_onehots, model.z_dim)
+            z_next = tensor_to_label(zs[i + 1], model.num_onehots, model.z_dim)
+            if not graph.has_node(z_cur):
+                graph.add_node(z_cur)
+            if z_next != z_cur and not graph.has_edge(z_cur, z_next):
+                graph.add_edge(z_cur, z_next)
+
+    print("number of nodes in full explicit graph", len(graph))
+    print("nodes", graph.nodes())
+    print("edges", graph.edges())
+    return graph
 #
 # def create_graph_from_sample_transitions_factorized(model, env, n_traj=50, len_traj=400, dataset=None):
 #     print("creating graphs....")
@@ -284,11 +284,14 @@ def plan_to_goal_and_execute_grouped(actor, env, grouped_graphs, onehot_groups, 
 
 def get_planning_success_rate(actor,
                               env,
-                              graph,
+                              # graph,
                               n_trials,
                               onehot_groups=None,
                               factorized=False,
-                              oracle=False):
+                              oracle=False,
+                              n_traj=None,
+                              len_traj=None,
+                              dataset=None):
     if onehot_groups:
         success_rate = 0
         pass
@@ -297,6 +300,11 @@ def get_planning_success_rate(actor,
         pass
     else:
         successes = 0
+        graph = create_graph_from_sample_transitions_full(actor.cpc_model, env,
+                                                               n_traj=n_traj,
+                                                               len_traj=len_traj,
+                                                               dataset=dataset
+                                                               )
         for trial in range(n_trials):
             print("Trial %d of %d" % (trial, n_trials))
             env.reset()
