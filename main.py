@@ -1,8 +1,3 @@
-import argparse
-import json
-import matplotlib
-matplotlib.use('agg')
-from utils.gen_utils import *
 from model import CPC, init_weights_func
 from agent.visual_foresight import CEM_actor
 from train import train
@@ -10,6 +5,11 @@ from planning import *
 from torch.utils.tensorboard import SummaryWriter
 from pathlib import Path
 from transition import Transition
+
+import argparse
+import json
+import matplotlib
+matplotlib.use('agg')
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--env', type=str, default='gridworld')
@@ -30,20 +30,20 @@ parser.add_argument('--num_onehots', type=int, default=0, help="if set to 0, mod
 parser.add_argument('--num_layers', type=int, default=2)
 parser.add_argument('--separate_W', type=int, default=0)
 parser.add_argument('--lr', type=float, default=1e-3)
-parser.add_argument('--loss', type=str, default='ce') # either ce or hinge for different contrastive loss forms
+parser.add_argument('--loss', type=str, default='ce')  # either ce or hinge for different contrastive loss forms
 parser.add_argument('--normalization', type=str, default="batchnorm")
 parser.add_argument('--ce_temp', type=float, default=1.)
 parser.add_argument('--scale_weights', type=float, default=1.)
 
 parser.add_argument('--savepath', type=str, default='results/grid')
-parser.add_argument('--vis_freq', type=int, default=5) # visualize every n epochs
-parser.add_argument('--plan_freq', type=int, default=50) # plan evaluation every n epochs
+parser.add_argument('--vis_freq', type=int, default=5)  # visualize every n epochs
+parser.add_argument('--plan_freq', type=int, default=50)  # plan evaluation every n epochs
 parser.add_argument('--baseline', type=str, default='', help="htm")
 parser.add_argument('--reset_rate', type=int, default=1)
 parser.add_argument('--n_traj', type=int, default=30000)
 parser.add_argument('--len_traj', type=int, default=2)
 
-parser.add_argument('--dataset_path', type=str, default="") # specify path if using offline dataset
+parser.add_argument('--dataset_path', type=str, default="")  # specify path if using offline dataset
 
 parser.add_argument('--random_step_size', action="store_true")
 parser.add_argument('--switching_factor_freq', type=int, default=1)
@@ -70,7 +70,7 @@ cpc_params = {
               'encoder': args.encoder,
               'z_dim': args.z_dim,
               'batch_size': args.batch_size,
-              'in_channels': 3, # inputs are rgb
+              'in_channels': 3,  # inputs are rgb
               'mode': mode,
               'input_dim': args.grid_n,
               'W_form': args.W,
@@ -114,28 +114,30 @@ datapath = {'train': {'obs': Path(args.dataset_path, 'train_observations.npy'),
             'valid': {'obs': Path(args.dataset_path, 'valid_observations.npy'),
                       'act': Path(args.dataset_path, 'valid_actions.npy')}}
 
-def format_dataset(dataset, type, key, envname):
+
+def format_dataset(dataset, dtype, key, envname):
     # Image Type (normalization is done in dataloader)
-    if dataset[type][key].dtype == np.uint16:
+    if dataset[dtype][key].dtype == np.uint16:
         print("Updating the types")
-        dataset[type][key] = dataset[type][key].astype(np.int64)
-        np.save(path, dataset[type][key])
+        dataset[dtype][key] = dataset[dtype][key].astype(np.int64)
+        np.save(path, dataset[dtype][key])
     # Image Shape
-    if key == 'obs' and dataset[type][key].shape[2] != 3 and dataset[type][key].shape[4] == 3:
-        dataset[type][key] = np.transpose(dataset[type][key], (0, 1, 4, 2, 3))
+    if key == 'obs' and dataset[dtype][key].shape[2] != 3 and dataset[dtype][key].shape[4] == 3:
+        dataset[dtype][key] = np.transpose(dataset[dtype][key], (0, 1, 4, 2, 3))
     # Action
     # if envname == 'pushenv' and key == 'acts':
 
+
 if args.dataset_path:
     # precollect dataset of transitions:
-    for type in dataset.keys():
-        for key, path in datapath[type].items():
+    for dtype in dataset.keys():
+        for key, path in datapath[dtype].items():
             if path.exists():
-                print("### Data %s %s Loaded ###" % (type, key))
-                dataset[type][key] = np.load(path)
-                format_dataset(dataset, type, key, args.env)
+                print("### Data %s %s Loaded ###" % (dtype, key))
+                dataset[dtype][key] = np.load(path)
+                format_dataset(dataset, dtype, key, args.env)
             else:
-                print("### Data %s %s Not Exist ###" % (type, key))
+                print("### Data %s %s Not Exist ###" % (dtype, key))
 
 train(env,
       actor,
