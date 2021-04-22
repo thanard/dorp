@@ -4,7 +4,6 @@ from pyrep import PyRep
 from pyrep.objects.vision_sensor import VisionSensor
 from pyrep.objects.shape import Shape
 from pyrep.robots.arms.panda import Panda
-from pyrep.robots.end_effectors.panda_gripper import PandaGripper
 from pyrep.const import RenderMode
 
 import numpy as np
@@ -116,7 +115,8 @@ class PushEnv(GoalEnv):
         """
         # Before push
         before_joint = self.before_joints[action_idx]
-        self.arm.set_joint_positions(before_joint)
+        self.arm.set_joint_positions(before_joint,
+                                     disable_dynamics=True)
         # self._pyrep.step_ui()
 
         # Push
@@ -136,7 +136,8 @@ class PushEnv(GoalEnv):
             before_position = self.before_ee_positions[action_idx]
             new_quat = self._get_quaternion(action_idx, backup=True)
             before_joint = self._get_joint_from_pos(before_position, new_quat)
-            self.arm.set_joint_positions(before_joint)
+            self.arm.set_joint_positions(before_joint,
+                                     disable_dynamics=True)
             # self._pyrep.step_ui()
             try:
                 after_position = self.after_ee_positions[action_idx]
@@ -162,7 +163,8 @@ class PushEnv(GoalEnv):
         # print(" --> inner steps: ", time.time() - start_start)
 
         # After push
-        self.arm.set_joint_positions(self._original_joints)
+        self.arm.set_joint_positions(self._original_joints,
+                                     disable_dynamics=True)
         # self._pyrep.step_ui()
         return self.get_obs()
 
@@ -236,7 +238,8 @@ class PushEnv(GoalEnv):
 
     def _visualize_actions(self):
         for joint in self.fb_joints:
-            self.arm.set_joint_positions(joint)
+            self.arm.set_joint_positions(joint,
+                                     disable_dynamics=True)
             self._pyrep.step_ui()
             time.sleep(1)
 

@@ -1,5 +1,4 @@
 import torch
-from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import shortest_path
 
 

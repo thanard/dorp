@@ -11,5 +11,6 @@ do
     do
         sleep 10 && echo "...checking if data for ${n_agents} objects exists"
     done
+    ### Key command
     CUDA_VISIBLE_DEVICES=${n_agents} python video_prediction/train_videopred.py --dataset NPYDatasetLoad --input_dirs ${data_dir} --experiment_dir ${config_dir} --output_dir ${output_dir} --model $model &
 done

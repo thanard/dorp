@@ -27,7 +27,7 @@ class CEM_actor(Agent):
             n_epochs = cpc_params.pop('n_epochs')
             model = CPC(**cpc_params).cuda()
             print("loading model.....")
-            modelpath = os.path.join(cpc_modeldir, "%d-agents-model" % n_agents)
+            modelpath = os.path.join(cpc_modeldir, "cpc-model")
             model.load_state_dict(torch.load(modelpath))
             model.eval()
             self.cpc_model = model
@@ -40,7 +40,10 @@ class CEM_actor(Agent):
             dataset_hparams = json.load(f)
         with open(os.path.join(result_folder, 'model_hparams.json')) as f:
             model_hparams = json.load(f)
-        assert dataset_hparams['env'] == 'gridworld'
+        if dataset_hparams['env'] == 'pushenv':
+            dataset_hparams['input_dims'] = [64, 64]
+        else:
+            assert dataset_hparams['env'] == 'gridworld'
 
         configuration = {
             'json_dir': result_folder,
